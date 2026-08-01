@@ -4,29 +4,68 @@
 
 namespace enttx {
 
-    // Features:
-    // Delta serialization only
-    // IsA relationships
+// Features:
+// Delta serialization only
+// IsA relationships
 
-    using prefab_id = entt::id_type;
+using prefab_id = entt::id_type;
 
-    template<typename Registry>
-    struct basic_component_ops {
-        using remove_fn = void(*)();
-    };
+struct prefab_tag {};
 
-    template<typename Registry>
-    struct basic_prefab_node {
-        prefab_id id = entt::null;
-        prefab_node parent = entt::null;
-    };
+struct prefab_instance_tag {
+    prefab_id prefab = entt::null;
+};
 
-    template<typename Registry>
-    class basic_prefab_registry {
-    };
+template<typename Registry>
+struct basic_component_ops {
+private:
+    using traits_type = entt::entt_traits<typename Registry::entity_type>;
 
-    using component_ops = basic_component_ops<entt::registry>;
-    using prefab_node = basic_prefab_node<entt::registry>;
-    using prefab_registry = basic_prefab_registry<entt::registry>;
+public:
+    /*! @brief Type of registry accepted by the handle. */
+    using registry_type = Registry;
+    /*! @brief Underlying entity identifier. */
+    using entity_type = typename traits_type::value_type;
+
+    using copy_fn = void(*)(const registry_type& src_reg, 
+                            const entity_type src, 
+                            registry_type& dst_reg, 
+                            const entity_type dst);
+
+    copy_fn copy = nullptr;
+};
+
+template<typename Registry>
+struct basic_prefab_node {
+private:
+    using traits_type = entt::entt_traits<typename Registry::entity_type>;
+
+public:
+    /*! @brief Type of registry accepted by the handle. */
+    using registry_type = Registry;
+    /*! @brief Underlying entity identifier. */
+    using entity_type = typename traits_type::value_type;
+
+    prefab_id id = entt::null;
+    prefab_node parent = entt::null;
+};
+
+template<typename Registry>
+class basic_prefab_registry {
+private:
+    using traits_type = entt::entt_traits<typename Registry::entity_type>;
+
+public:
+    /*! @brief Type of registry accepted by the handle. */
+    using registry_type = Registry;
+    /*! @brief Underlying entity identifier. */
+    using entity_type = typename traits_type::value_type;
+
+    registry_type reg;
+};
+
+using component_ops = basic_component_ops<entt::registry>;
+using prefab_node = basic_prefab_node<entt::registry>;
+using prefab_registry = basic_prefab_registry<entt::registry>;
 
 } // namespace enttx
