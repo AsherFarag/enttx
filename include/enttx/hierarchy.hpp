@@ -16,7 +16,7 @@ namespace enttx {
  *
  * @tparam Registry Basic registry type.
  */
-template<typename Registry>
+template<typename Registry, typename Tag = void>
 struct basic_hierarchy {
 private:
     using traits_type = entt::entt_traits<typename Registry::entity_type>;
@@ -160,6 +160,6 @@ public:
     }
 };
 
-using hierarchy = basic_hierarchy<entt::registry>;
+using hierarchy = basic_hierarchy<entt::registry, struct default_hierarchy_tag>;
 
 } // namespace enttx
