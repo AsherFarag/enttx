@@ -54,7 +54,7 @@ public:
 
         // Patch the previous sibling's next_sibling to skip over `child`
         if (h.prev_sibling != entt::null && 
-            reg.template valid(h.prev_sibling) && 
+            reg.valid(h.prev_sibling) && 
             reg.template all_of<basic_hierarchy>(h.prev_sibling)) {
             auto& ph = reg.template get<basic_hierarchy>(h.prev_sibling);
             ph.next_sibling = h.next_sibling;
@@ -62,7 +62,7 @@ public:
         
         // Patch the next sibling's prev_sibling to skip over `child`
         if (h.next_sibling != entt::null && 
-            reg.template valid(h.next_sibling) && 
+            reg.valid(h.next_sibling) && 
             reg.template all_of<basic_hierarchy>(h.next_sibling)) {
             auto& nh = reg.template get<basic_hierarchy>(h.next_sibling);
             nh.prev_sibling = h.prev_sibling;
@@ -70,7 +70,7 @@ public:
 
         // If `child` was the first child of its parent, update the parent's first_child
         if (h.parent != entt::null && 
-            reg.template valid(h.parent) && 
+            reg.valid(h.parent) && 
             reg.template all_of<basic_hierarchy>(h.parent)) {
             auto& ph = reg.template get<basic_hierarchy>(h.parent);
             if (ph.first_child == child)
@@ -94,11 +94,11 @@ public:
         auto& ph = reg.template get_or_emplace<basic_hierarchy>(parent);
         auto& ch = reg.template get_or_emplace<basic_hierarchy>(child);
 
-        ch.parent = parent;
+        ch.parent       = parent;
         ch.next_sibling = ph.first_child;
         ch.prev_sibling = entt::null;
 
-        if (ph.first_child != entt::null && reg.template valid(ph.first_child))
+        if (ph.first_child != entt::null && reg.valid(ph.first_child))
             reg.template get<basic_hierarchy>(ph.first_child).prev_sibling = child;
 
         ph.first_child = child;
@@ -119,7 +119,7 @@ public:
             return;
             
         entity_type cur = reg.template get<basic_hierarchy>(parent).first_child;
-        while (cur != entt::null && reg.template valid(cur)) {
+        while (cur != entt::null && reg.valid(cur)) {
             const entity_type next = reg.template get<basic_hierarchy>(cur).next_sibling;
             std::invoke(std::forward<Fn>(fn), cur);
             cur = next;
@@ -152,7 +152,7 @@ public:
         entity_type root = entt::null;
         while (reg.template all_of<basic_hierarchy>(e)) {
             const entity_type p = reg.template get<basic_hierarchy>(e).parent;
-            if (p == entt::null || !reg.template valid(p))
+            if (p == entt::null || !reg.valid(p))
                 break;
 
             root = p;
