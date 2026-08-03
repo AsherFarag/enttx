@@ -148,13 +148,15 @@ public:
      * @param e The entity whose root ancestor will be found.
      * @return The root ancestor entity, or entt::null if no valid ancestor exists.
      */
-    static entity_type find_root(const registry_type& reg, const entity_type e) {
+    static entity_type find_root(const registry_type& reg, entity_type e) {
         entity_type root = entt::null;
         while (reg.all_of<basic_hierarchy>(e)) {
             const entity_type p = reg.get<basic_hierarchy>(e).parent;
             if (p == entt::null || !reg.valid(p))
                 break;
+
             root = p;
+            e = p;
         }
         return root;
     }
