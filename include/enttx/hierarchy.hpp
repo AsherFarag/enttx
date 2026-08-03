@@ -47,32 +47,32 @@ public:
      * @param child The child entity to detach.
      */
     static void detach(registry_type& reg, const entity_type child) {
-        if (!reg.all_of<basic_hierarchy>(child)) 
+        if (!reg.template all_of<basic_hierarchy>(child)) 
             return;
 
-        auto& h = reg.get<basic_hierarchy>(child);
+        auto& h = reg.template get<basic_hierarchy>(child);
 
         // Patch the previous sibling's next_sibling to skip over `child`
         if (h.prev_sibling != entt::null && 
-            reg.valid(h.prev_sibling) && 
-            reg.all_of<basic_hierarchy>(h.prev_sibling)) {
-            auto& ph = reg.get<basic_hierarchy>(h.prev_sibling);
+            reg.template valid(h.prev_sibling) && 
+            reg.template all_of<basic_hierarchy>(h.prev_sibling)) {
+            auto& ph = reg.template get<basic_hierarchy>(h.prev_sibling);
             ph.next_sibling = h.next_sibling;
         }
         
         // Patch the next sibling's prev_sibling to skip over `child`
         if (h.next_sibling != entt::null && 
-            reg.valid(h.next_sibling) && 
-            reg.all_of<basic_hierarchy>(h.next_sibling)) {
-            auto& nh = reg.get<basic_hierarchy>(h.next_sibling);
+            reg.template valid(h.next_sibling) && 
+            reg.template all_of<basic_hierarchy>(h.next_sibling)) {
+            auto& nh = reg.template get<basic_hierarchy>(h.next_sibling);
             nh.prev_sibling = h.prev_sibling;
         }
 
         // If `child` was the first child of its parent, update the parent's first_child
         if (h.parent != entt::null && 
-            reg.valid(h.parent) && 
-            reg.all_of<basic_hierarchy>(h.parent)) {
-            auto& ph = reg.get<basic_hierarchy>(h.parent);
+            reg.template valid(h.parent) && 
+            reg.template all_of<basic_hierarchy>(h.parent)) {
+            auto& ph = reg.template get<basic_hierarchy>(h.parent);
             if (ph.first_child == child)
                 ph.first_child = h.next_sibling;
         }
@@ -91,15 +91,15 @@ public:
     static void attach_child(registry_type& reg, const entity_type parent, const entity_type child) {
         detach(reg, child);
 
-        auto& ph = reg.get_or_emplace<basic_hierarchy>(parent);
-        auto& ch = reg.get_or_emplace<basic_hierarchy>(child);
+        auto& ph = reg.template get_or_emplace<basic_hierarchy>(parent);
+        auto& ch = reg.template get_or_emplace<basic_hierarchy>(child);
 
         ch.parent = parent;
         ch.next_sibling = ph.first_child;
         ch.prev_sibling = entt::null;
 
-        if (ph.first_child != entt::null && reg.valid(ph.first_child))
-            reg.get<basic_hierarchy>(ph.first_child).prev_sibling = child;
+        if (ph.first_child != entt::null && reg.template valid(ph.first_child))
+            reg.template get<basic_hierarchy>(ph.first_child).prev_sibling = child;
 
         ph.first_child = child;
     }
@@ -115,12 +115,12 @@ public:
     template<typename Fn>
     requires std::invocable<Fn&, entity_type>
     static void for_each_child(const registry_type& reg, const entity_type parent, Fn&& fn) {
-        if (!reg.all_of<basic_hierarchy>(parent)) 
+        if (!reg.template all_of<basic_hierarchy>(parent)) 
             return;
             
-        entity_type cur = reg.get<basic_hierarchy>(parent).first_child;
-        while (cur != entt::null && reg.valid(cur)) {
-            const entity_type next = reg.get<basic_hierarchy>(cur).next_sibling;
+        entity_type cur = reg.template get<basic_hierarchy>(parent).first_child;
+        while (cur != entt::null && reg.template valid(cur)) {
+            const entity_type next = reg.template get<basic_hierarchy>(cur).next_sibling;
             std::invoke(std::forward<Fn>(fn), cur);
             cur = next;
         }
@@ -150,9 +150,9 @@ public:
      */
     static entity_type find_root(const registry_type& reg, entity_type e) {
         entity_type root = entt::null;
-        while (reg.all_of<basic_hierarchy>(e)) {
-            const entity_type p = reg.get<basic_hierarchy>(e).parent;
-            if (p == entt::null || !reg.valid(p))
+        while (reg.template all_of<basic_hierarchy>(e)) {
+            const entity_type p = reg.template get<basic_hierarchy>(e).parent;
+            if (p == entt::null || !reg.template valid(p))
                 break;
 
             root = p;
