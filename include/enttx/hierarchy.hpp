@@ -91,6 +91,11 @@ public:
     static void attach_child(registry_type& reg, const entity_type parent, const entity_type child) {
         detach(reg, child);
 
+        if ( parent == entt::null || !reg.valid(parent) || 
+             child == entt::null  || !reg.valid(child) ) {
+            return;
+        }
+
         auto& ph = reg.template get_or_emplace<basic_hierarchy>(parent);
         auto& ch = reg.template get_or_emplace<basic_hierarchy>(child);
 
@@ -121,7 +126,7 @@ public:
         entity_type cur = reg.template get<basic_hierarchy>(parent).first_child;
         while (cur != entt::null && reg.valid(cur)) {
             const entity_type next = reg.template get<basic_hierarchy>(cur).next_sibling;
-            std::invoke(std::forward<Fn>(fn), cur);
+            std::invoke(fn, cur);
             cur = next;
         }
     }
@@ -137,7 +142,7 @@ public:
     requires std::invocable<Fn&, entity_type>
     static void for_each_descendant(const registry_type& reg, const entity_type parent, Fn&& fn) {
         for_each_child(reg, parent, [&](const entity_type child) {
-            std::invoke(std::forward<Fn>(fn), child);
+            std::invoke(fn, child);
             for_each_descendant(reg, child, std::forward<Fn>(fn));
         });
     }

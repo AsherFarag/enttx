@@ -8,12 +8,25 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(EnTT)
 
+# Hierarchy example
 
 add_executable(hierarchy_example
     example_hierarchy.cpp
 )
 
 target_link_libraries(hierarchy_example
+    PRIVATE
+        EnTTx
+        EnTT::EnTT
+)
+
+# Prefab example
+
+add_executable(prefab_example
+    example_prefab.cpp
+)
+
+target_link_libraries(prefab_example
     PRIVATE
         EnTTx
         EnTT::EnTT
