@@ -16,10 +16,10 @@ void print_tree( entt::registry& reg, entt::entity e, int depth = 0 )
     std::cout << std::string( depth * 2, ' ' )
         << reg.get<name_tag>( e ).value << '\n';
 
-    hierarchy::for_each_child( reg, e, [&]( entt::entity child )
+	for ( entt::entity child : hierarchy::children( reg, e ) )
     {
         print_tree( reg, child, depth + 1 );
-    } );
+    }
 }
 
 int main()
@@ -45,16 +45,16 @@ int main()
     auto enemy = make( "Enemy" );
     auto sword = make( "Sword" );
 
-    hierarchy::attach_child( reg, scene, player );
-    hierarchy::attach_child( reg, scene, enemy );
+    hierarchy::push_back( reg, scene, player );
+    hierarchy::push_back( reg, scene, enemy );
 
-    hierarchy::attach_child( reg, player, camera );
-    hierarchy::attach_child( reg, player, weapon );
+    hierarchy::push_back( reg, player, camera );
+    hierarchy::push_back( reg, player, weapon );
 
-    hierarchy::attach_child( reg, weapon, muzzle );
-    hierarchy::attach_child( reg, weapon, light );
+    hierarchy::push_back( reg, weapon, muzzle );
+    hierarchy::push_back( reg, weapon, light );
 
-    hierarchy::attach_child( reg, enemy, sword );
+    hierarchy::push_back( reg, enemy, sword );
 
     std::cout << "=== Scene Hierarchy ===\n";
     print_tree( reg, scene );
@@ -67,7 +67,7 @@ int main()
 
     // Move the flashlight from the weapon to the camera.
     std::cout << "\nReparenting Flashlight -> Camera\n";
-    hierarchy::attach_child( reg, camera, light );
+    hierarchy::push_back( reg, camera, light );
 
     std::cout << "\n=== Updated Hierarchy ===\n";
     print_tree( reg, scene );
@@ -75,6 +75,12 @@ int main()
     auto root = hierarchy::find_root( reg, light );
     std::cout << "\nRoot of Flashlight: "
         << reg.get<name_tag>( root ).value << '\n';
+
+	std::cout << "\nDeleting Player and its descendants...\n";
+	reg.destroy( player );
+
+    std::cout << "\n=== Updated Hierarchy ===\n";
+    print_tree( reg, scene );
 
     // Wait for user input before exiting.
     std::cout << "\nPress Enter to exit...";
