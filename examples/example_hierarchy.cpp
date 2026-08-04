@@ -75,4 +75,8 @@ int main()
     auto root = hierarchy::find_root( reg, light );
     std::cout << "\nRoot of Flashlight: "
         << reg.get<name_tag>( root ).value << '\n';
+
+    // Wait for user input before exiting.
+    std::cout << "\nPress Enter to exit...";
+    std::cin.get();
 }
