@@ -5,6 +5,8 @@
 #include <concepts>
 #include <functional>
 
+#include "config.hpp"
+
 namespace enttx {
 
 /*! @brief Describes how a hierarchy should handle it's relationship on destruction. */
@@ -77,7 +79,7 @@ public:
         [[nodiscard]] pointer   operator->() const noexcept { return &cur_; }
     
         basic_child_iterator& operator++() noexcept {
-            ENTT_ASSERT(reg_ != nullptr && reg_->template all_of<basic_hierarchy>(cur_),
+            ENTTX_ASSERT(reg_ != nullptr && reg_->template all_of<basic_hierarchy>(cur_),
                         "Corrupted hierarchy: child does not have a basic_hierarchy component");
             cur_ = reg_->template get<basic_hierarchy>(cur_).*Next;
             return *this;
@@ -166,26 +168,26 @@ public:
 
         // Patch the previous sibling's next_sibling to skip over `child`
         if (h.prev_sibling != entt::null) {
-            ENTT_ASSERT(reg.template all_of<basic_hierarchy>(h.prev_sibling), "Corrupted hierarchy: previous sibling does not have a basic_hierarchy component");
+            ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(h.prev_sibling), "Corrupted hierarchy: previous sibling does not have a basic_hierarchy component");
             reg.template get<basic_hierarchy>(h.prev_sibling).next_sibling = h.next_sibling;
         }
         
         // Patch the next sibling's prev_sibling to skip over `child`
         if (h.next_sibling != entt::null) {
-            ENTT_ASSERT(reg.template all_of<basic_hierarchy>(h.next_sibling), "Corrupted hierarchy: next sibling does not have a basic_hierarchy component");
+            ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(h.next_sibling), "Corrupted hierarchy: next sibling does not have a basic_hierarchy component");
             reg.template get<basic_hierarchy>(h.next_sibling).prev_sibling = h.prev_sibling;
         }
 
         // If `child` was the first child of its parent, update the parent's first_child
         if (h.parent != entt::null) {
-            ENTT_ASSERT(reg.template all_of<basic_hierarchy>(h.parent), "Corrupted hierarchy: parent does not have a basic_hierarchy component");
+            ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(h.parent), "Corrupted hierarchy: parent does not have a basic_hierarchy component");
             auto& ph = reg.template get<basic_hierarchy>(h.parent);
             if (ph.first_child == child)
                 ph.first_child = h.next_sibling;
             if (ph.last_child == child)
                 ph.last_child = h.prev_sibling;
 
-			ENTT_ASSERT(ph.child_count > 0, "Parent's children count should be greater than zero");
+			ENTTX_ASSERT(ph.child_count > 0, "Parent's children count should be greater than zero");
             ph.child_count--;
         }
         
@@ -205,7 +207,7 @@ public:
         auto& ph = reg.template get<basic_hierarchy>(parent);
         entity_type child = ph.first_child;
         while (child != entt::null) {
-            ENTT_ASSERT(reg.template all_of<basic_hierarchy>(child), "Corrupted hierarchy: child does not have a basic_hierarchy component");
+            ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(child), "Corrupted hierarchy: child does not have a basic_hierarchy component");
             auto& ch = reg.template get<basic_hierarchy>(child);
             const entity_type next_child = ch.next_sibling;
             ch.parent = ch.next_sibling = ch.prev_sibling = entt::null;
@@ -227,8 +229,8 @@ public:
 			return;
 		}
 
-        ENTT_ASSERT(reg.valid(child), "Child entity is not valid");
-        ENTT_ASSERT(reg.template all_of<basic_hierarchy>(before), "Before entity does not have a basic_hierarchy component");
+        ENTTX_ASSERT(reg.valid(child), "Child entity is not valid");
+        ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(before), "Before entity does not have a basic_hierarchy component");
 
         auto& bh = reg.template get<basic_hierarchy>(before);
         const entity_type parent = bh.parent;
@@ -239,8 +241,8 @@ public:
 
         detach(reg, child);
 
-        ENTT_ASSERT(reg.template all_of<basic_hierarchy>(parent), "Corrupted hierarchy: parent does not have a basic_hierarchy component");
-        ENTT_ASSERT(!is_descendant(reg, parent, child), "Cannot insert a parent as a child of its descendant");
+        ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(parent), "Corrupted hierarchy: parent does not have a basic_hierarchy component");
+        ENTTX_ASSERT(!is_descendant(reg, parent, child), "Cannot insert a parent as a child of its descendant");
 
         auto& ph        = reg.template get<basic_hierarchy>(parent);
         auto& ch        = reg.template get_or_emplace<basic_hierarchy>(child);
@@ -249,7 +251,7 @@ public:
         ch.prev_sibling = bh.prev_sibling;
 
         if (bh.prev_sibling != entt::null) {
-            ENTT_ASSERT(reg.template all_of<basic_hierarchy>(bh.prev_sibling), "Corrupted hierarchy: previous sibling does not have a basic_hierarchy component");
+            ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(bh.prev_sibling), "Corrupted hierarchy: previous sibling does not have a basic_hierarchy component");
             reg.template get<basic_hierarchy>(bh.prev_sibling).next_sibling = child;
         } else {
             // If there was no previous sibling, this child becomes the first child.
@@ -271,8 +273,8 @@ public:
             return;
         }
 
-        ENTT_ASSERT(reg.valid(child), "Child entity is not valid");
-        ENTT_ASSERT(reg.template all_of<basic_hierarchy>(after), "After entity does not have a basic_hierarchy component");
+        ENTTX_ASSERT(reg.valid(child), "Child entity is not valid");
+        ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(after), "After entity does not have a basic_hierarchy component");
 
         auto& ah = reg.template get<basic_hierarchy>(after);
         const entity_type parent = ah.parent;
@@ -283,8 +285,8 @@ public:
 
         detach(reg, child);
 
-        ENTT_ASSERT(reg.template all_of<basic_hierarchy>(parent), "Corrupted hierarchy: parent does not have a basic_hierarchy component");
-        ENTT_ASSERT(!is_descendant(reg, parent, child), "Cannot insert a parent as a child of its descendant");
+        ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(parent), "Corrupted hierarchy: parent does not have a basic_hierarchy component");
+        ENTTX_ASSERT(!is_descendant(reg, parent, child), "Cannot insert a parent as a child of its descendant");
 
         auto& ph        = reg.template get<basic_hierarchy>(parent);
         auto& ch        = reg.template get_or_emplace<basic_hierarchy>(child);
@@ -293,7 +295,7 @@ public:
         ch.next_sibling = ah.next_sibling;
 
         if (ah.next_sibling != entt::null) {
-            ENTT_ASSERT(reg.template all_of<basic_hierarchy>(ah.next_sibling), "Corrupted hierarchy: next sibling does not have a basic_hierarchy component");
+            ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(ah.next_sibling), "Corrupted hierarchy: next sibling does not have a basic_hierarchy component");
             reg.template get<basic_hierarchy>(ah.next_sibling).prev_sibling = child;
         } else {
             // If there was no next sibling, this child becomes the last child.
@@ -315,12 +317,12 @@ public:
 			return;
 		}
 
-        ENTT_ASSERT(reg.valid(parent), "Parent entity is not valid");
-        ENTT_ASSERT(reg.valid(child), "Child entity is not valid");
+        ENTTX_ASSERT(reg.valid(parent), "Parent entity is not valid");
+        ENTTX_ASSERT(reg.valid(child), "Child entity is not valid");
 
 		detach( reg, child );
 
-        ENTT_ASSERT(!is_descendant(reg, parent, child), "Cannot push a parent as a child of its descendant");
+        ENTTX_ASSERT(!is_descendant(reg, parent, child), "Cannot push a parent as a child of its descendant");
 
 		auto& ph = reg.template get_or_emplace<basic_hierarchy>(parent);
 		auto& ch = reg.template get_or_emplace<basic_hierarchy>(child);
@@ -330,7 +332,7 @@ public:
         ch.next_sibling = ph.first_child;
 
         if (ph.first_child != entt::null) {
-            ENTT_ASSERT(reg.template all_of<basic_hierarchy>(ph.first_child), "Corrupted hierarchy: first child does not have a basic_hierarchy component");
+            ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(ph.first_child), "Corrupted hierarchy: first child does not have a basic_hierarchy component");
             reg.template get<basic_hierarchy>(ph.first_child).prev_sibling = child;
         }
         
@@ -352,12 +354,12 @@ public:
 			return;
 		}
 
-        ENTT_ASSERT(reg.valid(parent), "Parent entity is not valid");
-        ENTT_ASSERT(reg.valid(child), "Child entity is not valid");
+        ENTTX_ASSERT(reg.valid(parent), "Parent entity is not valid");
+        ENTTX_ASSERT(reg.valid(child), "Child entity is not valid");
 
 		detach( reg, child );
 
-        ENTT_ASSERT(!is_descendant(reg, parent, child), "Cannot push a parent as a child of its descendant");
+        ENTTX_ASSERT(!is_descendant(reg, parent, child), "Cannot push a parent as a child of its descendant");
 
 		auto& ph = reg.template get_or_emplace<basic_hierarchy>(parent);
 		auto& ch = reg.template get_or_emplace<basic_hierarchy>(child);
@@ -368,7 +370,7 @@ public:
 
 		// If the parent already has a last child, update its next_sibling to point to the new child
 		if (ph.last_child != entt::null) {
-            ENTT_ASSERT(reg.template all_of<basic_hierarchy>(ph.last_child), "Corrupted hierarchy: last child does not have a basic_hierarchy component");
+            ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(ph.last_child), "Corrupted hierarchy: last child does not have a basic_hierarchy component");
 			reg.template get<basic_hierarchy>(ph.last_child).next_sibling = child;
 		}
 
@@ -425,7 +427,7 @@ public:
             if (p == entt::null || !reg.template all_of<basic_hierarchy>(p))
                 break;
 
-            ENTT_ASSERT(p != entt, "Cycle detected in hierarchy");
+            ENTTX_ASSERT(p != entt, "Cycle detected in hierarchy");
             root = p;
             entt = p;
         }
@@ -467,7 +469,7 @@ public:
         if constexpr (deletion_policy == hierarchy_deletion_policy::destroy_children) {
             entity_type child = reg.template get<basic_hierarchy>(entt).first_child;
             while (child != entt::null) {
-                ENTT_ASSERT(reg.template all_of<basic_hierarchy>(child), "Corrupted hierarchy: child does not have a basic_hierarchy component");
+                ENTTX_ASSERT(reg.template all_of<basic_hierarchy>(child), "Corrupted hierarchy: child does not have a basic_hierarchy component");
                 const entity_type next = reg.template get<basic_hierarchy>(child).next_sibling;
                 reg.template get<basic_hierarchy>(child).parent = entt::null; // skip patching entt, it's dying anyway
                 reg.destroy(child);
