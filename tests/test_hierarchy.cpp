@@ -10,7 +10,7 @@ TEST_CASE("Attach child creates hierarchy components")
     const auto parent = registry.create();
     const auto child = registry.create();
 
-    enttx::hierarchy::attach_child(registry, parent, child);
+    enttx::hierarchy::push_front(registry, parent, child);
 
     REQUIRE(registry.all_of<enttx::hierarchy>(parent));
     REQUIRE(registry.all_of<enttx::hierarchy>(child));
@@ -34,9 +34,9 @@ TEST_CASE("Children are inserted at the front")
     auto child2 = registry.create();
     auto child3 = registry.create();
 
-    enttx::hierarchy::attach_child(registry, parent, child1);
-    enttx::hierarchy::attach_child(registry, parent, child2);
-    enttx::hierarchy::attach_child(registry, parent, child3);
+    enttx::hierarchy::push_front(registry, parent, child1);
+    enttx::hierarchy::push_front(registry, parent, child2);
+    enttx::hierarchy::push_front(registry, parent, child3);
 
     std::vector<entt::entity> children;
 
@@ -62,8 +62,8 @@ TEST_CASE("Sibling links are maintained")
     auto child1 = registry.create();
     auto child2 = registry.create();
 
-    enttx::hierarchy::attach_child(registry, parent, child1);
-    enttx::hierarchy::attach_child(registry, parent, child2);
+    enttx::hierarchy::push_front(registry, parent, child1);
+    enttx::hierarchy::push_front(registry, parent, child2);
 
     const auto& h1 = registry.get<enttx::hierarchy>(child1);
     const auto& h2 = registry.get<enttx::hierarchy>(child2);
@@ -80,7 +80,7 @@ TEST_CASE("Detach removes child from hierarchy")
     auto parent = registry.create();
     auto child = registry.create();
 
-    enttx::hierarchy::attach_child(registry, parent, child);
+    enttx::hierarchy::push_front(registry, parent, child);
 
     enttx::hierarchy::detach(registry, child);
 
@@ -103,11 +103,11 @@ TEST_CASE("Reattaching moves child to new parent")
     auto parent2 = registry.create();
     auto child = registry.create();
 
-    enttx::hierarchy::attach_child(registry, parent1, child);
+    enttx::hierarchy::push_front(registry, parent1, child);
 
     CHECK(registry.get<enttx::hierarchy>(child).parent == parent1);
 
-    enttx::hierarchy::attach_child(registry, parent2, child);
+    enttx::hierarchy::push_front(registry, parent2, child);
 
     CHECK(registry.get<enttx::hierarchy>(child).parent == parent2);
     CHECK(registry.get<enttx::hierarchy>(parent1).first_child == entt::null);
@@ -123,8 +123,8 @@ TEST_CASE("for_each_child visits children")
     auto child1 = registry.create();
     auto child2 = registry.create();
 
-    enttx::hierarchy::attach_child(registry, parent, child1);
-    enttx::hierarchy::attach_child(registry, parent, child2);
+    enttx::hierarchy::push_front(registry, parent, child1);
+    enttx::hierarchy::push_front(registry, parent, child2);
 
     size_t count = 0;
 
@@ -146,8 +146,8 @@ TEST_CASE("for_each_descendant visits entire tree")
     auto child = registry.create();
     auto grandchild = registry.create();
 
-    enttx::hierarchy::attach_child(registry, root, child);
-    enttx::hierarchy::attach_child(registry, child, grandchild);
+    enttx::hierarchy::push_front(registry, root, child);
+    enttx::hierarchy::push_front(registry, child, grandchild);
 
     std::vector<entt::entity> result;
 
@@ -172,8 +172,8 @@ TEST_CASE("find_root returns root parent")
     auto child = registry.create();
     auto grandchild = registry.create();
 
-    enttx::hierarchy::attach_child(registry, root, child);
-    enttx::hierarchy::attach_child(registry, child, grandchild);
+    enttx::hierarchy::push_front(registry, root, child);
+    enttx::hierarchy::push_front(registry, child, grandchild);
 
     CHECK(enttx::hierarchy::find_root(registry, grandchild) == root);
 }
@@ -203,7 +203,7 @@ TEST_CASE("Child can be detached during iteration")
     auto parent = registry.create();
     auto child = registry.create();
 
-    enttx::hierarchy::attach_child(registry, parent, child);
+    enttx::hierarchy::push_front(registry, parent, child);
 
     enttx::hierarchy::for_each_child(registry, parent,
         [&](auto entity)
