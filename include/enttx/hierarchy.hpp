@@ -72,16 +72,25 @@ public:
         using reference         = const entity_type&;
     
         constexpr basic_child_iterator() noexcept = default;
-        basic_child_iterator(const registry_type& reg, const entity_type cur) noexcept
-            : reg_{&reg}, cur_{cur} {}
+        basic_child_iterator(const registry_type& reg, const entity_type curr) noexcept
+            : reg_{&reg}, curr_{curr} {
+                if (curr_ != entt::null) {
+                    ENTTX_ASSERT(reg_->template all_of<basic_hierarchy>(curr_),
+                        "Corrupted hierarchy: child does not have a basic_hierarchy component");
+                    next_ = reg_->template get<basic_hierarchy>(curr_).*Next;
+                }
+        }
     
-        [[nodiscard]] reference operator*()  const noexcept { return cur_; }
-        [[nodiscard]] pointer   operator->() const noexcept { return &cur_; }
+        [[nodiscard]] reference operator*()  const noexcept { return curr_; }
+        [[nodiscard]] pointer   operator->() const noexcept { return &curr_; }
     
         basic_child_iterator& operator++() noexcept {
-            ENTTX_ASSERT(reg_ != nullptr && reg_->template all_of<basic_hierarchy>(cur_),
-                        "Corrupted hierarchy: child does not have a basic_hierarchy component");
-            cur_ = reg_->template get<basic_hierarchy>(cur_).*Next;
+            curr_ = next_;
+            if (curr_ != entt::null) {
+                ENTTX_ASSERT(reg_->template all_of<basic_hierarchy>(curr_),
+                    "Corrupted hierarchy: child does not have a basic_hierarchy component");
+                next_ = reg_->template get<basic_hierarchy>(curr_).*Next;
+            }
             return *this;
         }
     
@@ -92,12 +101,13 @@ public:
         }
     
         [[nodiscard]] friend bool operator==(const basic_child_iterator& lhs, const basic_child_iterator& rhs) noexcept {
-            return lhs.cur_ == rhs.cur_;
+            return lhs.curr_ == rhs.curr_;
         }
     
     private:
         const registry_type* reg_{nullptr};
-        entity_type cur_{entt::null};
+        entity_type curr_{entt::null};
+		entity_type next_{entt::null};
     };
     
     /*! @brief Type of forward iterator over the direct children of a parent entity. */
@@ -118,11 +128,11 @@ public:
             if ( reg.template all_of<basic_hierarchy>( parent ) ) {
                 first = reg.template get<basic_hierarchy>( parent ).first_child;
             }
-            return iterator{ reg, first };
+			return iterator{reg, first};
         }
 
         [[nodiscard]] iterator end() const noexcept {
-            return iterator{ reg, entt::null };
+            return iterator{};
         }
 
         [[nodiscard]] reverse_iterator rbegin() const noexcept {
@@ -130,11 +140,11 @@ public:
             if ( reg.template all_of<basic_hierarchy>( parent ) ) {
                 last = reg.template get<basic_hierarchy>( parent ).last_child;
             }
-            return reverse_iterator{ reg, last };
+            return reverse_iterator{reg, last};
         }
 
         [[nodiscard]] reverse_iterator rend() const noexcept {
-            return reverse_iterator{ reg, entt::null };
+            return reverse_iterator{};
         }
     };
 
@@ -149,6 +159,8 @@ public:
      *        or standard algorithms.
      * @param reg The registry containing the entities.
      * @param parent The parent entity whose children will be iterated.
+	 * @warning It is safe to destroy the current entity being iterated, 
+     *          but it is not safe to destroy the parent entity or any other sibling entities during iteration.
      */
     [[nodiscard]]
     static children_view children( const registry_type& reg, const entity_type parent ) noexcept {
@@ -387,7 +399,6 @@ public:
      * @param reg The registry containing the entities.
      * @param parent The parent entity whose children will be visited.
      * @param fn The callable to invoke for each child entity.
-     * @note The callable `fn` can safely detach or destroy the visited child entity.
      */
     template<typename Fn>
     requires std::invocable<Fn&, entity_type>
@@ -398,7 +409,7 @@ public:
     }
 
     /*!
-     * @brief Visits every descendant of a parent entity in depth-first pre-order.
+     * @brief Visits every descendant of a parent entity in depth-first post-order (children before parent, siblings in order).
      * @tparam Fn A callable type that takes an entity_type as an argument.
      * @param reg The registry containing the entities.
      * @param parent The parent entity whose descendants will be visited.
@@ -408,8 +419,8 @@ public:
     requires std::invocable<Fn&, entity_type>
     static void for_each_descendant(const registry_type& reg, const entity_type parent, Fn&& fn) {
         for_each_child(reg, parent, [&](const entity_type child) {
+            for_each_descendant( reg, child, fn );
             std::invoke(fn, child);
-            for_each_descendant(reg, child, fn);
         });
     }
 
@@ -450,6 +461,20 @@ public:
         }
 
         return false;
+    }
+
+    /*! @brief Implements remap_traits (see prefab.hpp) */
+    static void remap(registry_type& reg, entity_type entt, const auto& remap) {
+        if (!reg.template all_of<basic_hierarchy>(entt)) {
+            return;
+        }
+
+        auto& h        = reg.template get<basic_hierarchy>(entt);
+        h.parent       = remap.translate(h.parent);
+        h.first_child  = remap.translate(h.first_child);
+        h.last_child   = remap.translate(h.last_child);
+        h.next_sibling = remap.translate(h.next_sibling);
+        h.prev_sibling = remap.translate(h.prev_sibling);
     }
 
     /*!
