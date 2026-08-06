@@ -29,7 +29,7 @@ EnTT provides a powerful low-level ECS foundation, but many games require higher
 - C++20+
 
 For building examples and tests:
-- CMake 3.20+
+- CMake 3.28+
 
 ## Installation
 
@@ -86,7 +86,7 @@ int main()
 }
 ```
 
-- **Intrusive hierarchy component:** Represents parent/child relationships using a lightweight intrusive linked structure.
+- **Intrusive hierarchy component:** Represents parent/child relationships using a lightweight intrusive double-linked structure.
 - **Constant-time reparenting:** Attach, detach, and reorder entities without rebuilding the hierarchy.
 - **Cache-friendly traversal:** Iterate children efficiently without external tree allocations.
 - **Tag support:** Multiple independent hierarchies can exist on the same entity using hierarchy tags.
@@ -95,24 +95,32 @@ int main()
 ### Prefabs `prefab.hpp`
 
 ```
-Character Prefab
-    ├── Enemy Prefab
-    │   ├── Slime Prefab
-    │   └── Boss Prefab
-    │       └── Slime King Prefab
-    ├── Player Prefab
-    └── Shop Merchant Prefab
+Goblin
+├── Weapon
+└── Campfire
+
+Goblin Chief (inherits Goblin)
+├── Weapon (overridden)
+├── War Banner
+└── Campfire
 ```
 
-- **'Is A' relationships:** Prefabs implement a variant system similar to Unity's prefabs, allowing derived prefabs to inherit from a base while selectively overriding data.
-- **Delta-based serialization:** Derived prefabs store only authored changes instead of duplicating inherited data.
-- **Nested prefabs:** TODO
+- **Prefab inheritance:** Create variants of existing prefabs using `'Is A'` relationships. Derived prefabs inherit components and children from their base and can override or remove them.
+- **Component overrides:** Change only the data that differs from the base prefab while keeping inherited values intact.
+- **Child overrides:** Modify inherited child nodes without recreating the hierarchy.
+- **Nested prefabs:** Compose larger prefabs by embedding other prefabs as children.
+- **Runtime instantiation:** Convert prefab definitions into normal EnTT entities inside any registry.
+- **Prefab introspection:** Query relationships with `is_a()`, `get_base()`, and `derived()`.
+- **Detach instances:** Use `unpack()` to remove prefab tracking and turn an instance into an independent entity hierarchy.
+- **EnTT native:** Built on top of `entt::registry` and works with normal EnTT components.
 
 ## Roadmap
 - [x] Entity hierarchies
-- [ ] Prefab inheritance
-- [ ] Nested prefabs
+- [x] Prefab inheritance
+- [x] Nested prefabs
 - [ ] Documentation
+- [ ] More advanced examples like serialization and prefab editors
+- [ ] Support for per-field delta with prefabs
 
 ## Contributing
 
