@@ -506,6 +506,7 @@ public:
     }
 };
 
+/*! @brief Alias declaration for the most common use case. */
 using hierarchy = basic_hierarchy<entt::registry, 
                                   hierarchy_deletion_policy::destroy_children, 
                                   struct default_hierarchy_tag>;
