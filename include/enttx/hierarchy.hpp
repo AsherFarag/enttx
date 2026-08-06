@@ -29,12 +29,12 @@ enum class hierarchy_deletion_policy : std::uint8_t {
  * 
  * @tparam Registry Basic registry type.
  * @tparam Policy Deletion policy for handling hierarchy relationships on destruction.
- * @tparam Tag To distinguish different hierarchies in the same registry.
+ * @tparam _ Tag to distinguish different hierarchies in the same registry.
  */
 template<
     typename Registry, 
     hierarchy_deletion_policy Policy = hierarchy_deletion_policy::destroy_children, 
-    typename Tag = void>
+    typename = void>
 struct basic_hierarchy {
 private:
     using traits_type = entt::entt_traits<typename Registry::entity_type>;
@@ -125,8 +125,8 @@ public:
 
         [[nodiscard]] iterator begin() const noexcept {
             entity_type first = entt::null;
-            if ( reg.template all_of<basic_hierarchy>( parent ) ) {
-                first = reg.template get<basic_hierarchy>( parent ).first_child;
+            if (reg.template all_of<basic_hierarchy>(parent)) {
+                first = reg.template get<basic_hierarchy>(parent).first_child;
             }
 			return iterator{reg, first};
         }
@@ -137,8 +137,8 @@ public:
 
         [[nodiscard]] reverse_iterator rbegin() const noexcept {
             entity_type last = entt::null;
-            if ( reg.template all_of<basic_hierarchy>( parent ) ) {
-                last = reg.template get<basic_hierarchy>( parent ).last_child;
+            if (reg.template all_of<basic_hierarchy>(parent)) {
+                last = reg.template get<basic_hierarchy>(parent).last_child;
             }
             return reverse_iterator{reg, last};
         }
@@ -454,7 +454,7 @@ public:
      */
     [[nodiscard]]
     static bool is_descendant(const registry_type& reg, entity_type entt, const entity_type ancestor) {
-        while(reg.template all_of<basic_hierarchy>(entt)) {
+        while(entt != entt::null && reg.template all_of<basic_hierarchy>(entt)) {
             entt = reg.template get<basic_hierarchy>(entt).parent;
             if(entt == ancestor)
                 return true;
@@ -484,7 +484,7 @@ public:
      * @note This takes advantage of the auto-connection of the `on_destroy` signal in EnTT. 
      */
     static void on_destroy(registry_type& reg, const entity_type entt) 
-        requires (deletion_policy != hierarchy_deletion_policy::unhandled) {
+    requires (deletion_policy != hierarchy_deletion_policy::unhandled) {
         if (!reg.template all_of<basic_hierarchy>(entt)) {
             return;
         }
