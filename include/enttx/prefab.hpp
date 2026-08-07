@@ -153,13 +153,19 @@ public:
 /*! @brief Returns a basic_component_ops for a given component type T and registry type Registry. */
 template<typename T, typename Registry>
 static basic_component_ops<Registry> get_component_ops() {
-    using registry_type = Registry;
-    using component_ops = basic_component_ops<registry_type>;
-    using entity_type   = typename component_ops::entity_type;
-    using entity_remap  = basic_entity_remap<registry_type>;
+    using registry_type    = Registry;
+    using component_ops    = basic_component_ops<registry_type>;
+    using entity_type      = typename component_ops::entity_type;
+    using entity_remap     = basic_entity_remap<registry_type>;
+    using component_traits = entt::component_traits<T, entity_type>;
 
     static auto copy = +[](const registry_type& src, entity_type se, registry_type& dst, entity_type de) {
-        dst.template emplace_or_replace<T>(de, src.template get<T>(se));
+        // EnTT optimises away empty components, so handle them specially to avoid calling get<T> on a non-existent component.
+        if constexpr (component_traits::page_size == 0u) {
+            dst.template emplace_or_replace<T>(de);
+        } else {
+            dst.template emplace_or_replace<T>(de, src.template get<T>(se));
+        }
     };
 
     static auto remove = +[](registry_type& reg, entity_type e) {
