@@ -273,12 +273,13 @@ public:
 
     /*!
      * @brief Declares a new prefab, optionally deriving ("IsA") from a base prefab.
-     * @return The node_id of the prefab's root node. If `base` is given, this is
-     *         the *same* node_id as the base's root - the variant's root is the
-     *         same logical node as its base's root, just with (possibly) its own
-     *         authored overrides.
+     * @param id The prefab_id to declare.
+     * @param base The base prefab_id to derive from, if any.
+     * @param root_hint A hint for the root node_id, if known.
+     *                  If base is specified, the root_hint is ignored and the base's root node_id is used instead.
+     * @return The node_id of the root node of the prefab.
      */
-    node_id create_prefab(const prefab_id id, const prefab_id base = entt::null) {
+    node_id create_prefab(const prefab_id id, const prefab_id base = entt::null, const node_id root_hint = entt::null) {
         node_id root;
         entity_type base_entity = entt::null;
 
@@ -289,7 +290,7 @@ public:
             ENTTX_ASSERT(def_reg.template all_of<node_id>(base_entity), "Corrupted prefab: base prefab entity has no node_id");
             root = def_reg.template get<node_id>(base_entity);
         } else {
-            root = id_gen_();
+            root = (root_hint != entt::null) ? root_hint : id_gen_();
         }
 
         const entity_type e = ensure_authoring(id, root);
@@ -392,6 +393,46 @@ public:
         prefab_entities_.clear();
         node_parent_.clear();
         node_authoring_.clear();
+    }
+
+    /*! 
+     * @brief Rebuilds the internal cache maps. 
+     * Must be called after modifying the prefab definitions without using the prefab registry's modification methods.
+	 * For example, after loading a prefab registry from disk, or after manually modifying the def_reg directly.
+     */
+    void rebuild_cache() {
+        prefab_entities_.clear();
+        node_parent_.clear();
+        node_authoring_.clear();
+
+        // Rebuild prefab_entities_ lookup
+        for (auto [e, pid] : def_reg.view<enttx::prefab_id>().each()) {
+            prefab_entities_[pid] = e;
+        }
+
+        // Rebuild node_authoring_ and node_parent_
+        for (auto [root_entity, pid] : def_reg.view<enttx::prefab_id>().each()) {
+            
+            auto traverse_and_rebuild = [&](entt::entity curr, auto& self) -> void {
+                enttx::node_id curr_id = def_reg.get<enttx::node_id>(curr);
+                node_authoring_[pid][curr_id] = curr;
+
+                // Rebuild node_parent_
+                if (const auto* auth = def_reg.try_get<authoring_hierarchy>(curr)) {
+                    if (auth->parent != entt::null) {
+                        enttx::node_id parent_id = def_reg.get<enttx::node_id>(auth->parent);
+                        node_parent_[curr_id] = parent_id;
+                    }
+                }
+
+				// TODO: Possible to run out of stack here if prefab is very deep, move to temp alloc buffers instead
+                authoring_hierarchy::for_each_child(def_reg, curr, [&](entt::entity child) {
+                    self(child, self);
+                });
+            };
+
+            traverse_and_rebuild(root_entity, traverse_and_rebuild);
+        }
     }
 
     // ------------------------------------------------------------- Instantiate
