@@ -31,8 +31,11 @@ static_assert(ENTT_VERSION_MAJOR > ENTTX_MIN_ENTT_VERSION_MAJOR   ||
 
 #ifdef ENTTX_DISABLE_ASSERT
 #    undef ENTTX_ASSERT
+#    undef ENTTX_USER_ASSERT
 #    define ENTTX_ASSERT(condition, msg) (void(0))
+#    define ENTTX_USER_ASSERT(condition, msg) (void(0))
 #elif !defined ENTTX_ASSERT
 #    include <cassert>
 #    define ENTTX_ASSERT(condition, msg) assert(((condition) && (msg)))
+#    define ENTTX_USER_ASSERT(condition, msg) ENTTX_ASSERT(condition, "User assertion failed: " msg)
 #endif
