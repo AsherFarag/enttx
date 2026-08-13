@@ -11,7 +11,7 @@ concept is_entity_remapper = requires(const T& remapper, typename Registry::enti
     { remapper(e) } -> std::same_as<typename Registry::entity_type>;
 };
 
-/*! @brief Checks if a type T has a static member function `remap` accepting `Registry`. */
+/*! @brief Checks if a type T has a static member function `remap` satisfying the expected signature. */
 template<typename T, typename Registry, typename Remapper>
 concept has_member_remap =
     is_entity_remapper<Remapper, Registry> &&
@@ -59,7 +59,7 @@ concept is_remappable =
 
 /*! 
  * @brief A class for remapping entities from one registry to another.
- 
+
  * @code{.cpp}
  * auto remap = enttx::basic_entity_remap<...>{}
  *      .map(old_entity, new_entity);
