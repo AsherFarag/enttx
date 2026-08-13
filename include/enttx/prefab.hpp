@@ -127,7 +127,7 @@ static basic_component_ops<Registry> get_component_ops() {
         .remove = *remove,
     };
 
-    if constexpr (is_remappable<T, Registry>) {
+    if constexpr (is_remappable<T, Registry, entity_remap>) {
         ops.remap = +[](registry_type& reg, entity_type e, const entity_remap& remap) {
             remap_traits<T>::remap(reg, e, remap);
         };

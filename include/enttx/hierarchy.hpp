@@ -7,6 +7,7 @@
 #include <functional>
 
 #include "config.hpp"
+#include "entity_remap.hpp"
 
 namespace enttx {
 
@@ -422,13 +423,18 @@ public:
     // ------------------------------------------------------------- 
 
     /*! @brief Implements the remap_traits (see `entity_remap.hpp`). */
-    static void remap(registry_type& reg, const entity_type e, const auto& remap) {
-        if (auto* h = reg.template try_get<basic_hierarchy>(e)) {
-            h->parent       = remap.translate(h->parent);
-            h->first_child  = remap.translate(h->first_child);
-            h->last_child   = remap.translate(h->last_child);
-            h->next_sibling = remap.translate(h->next_sibling);
-            h->prev_sibling = remap.translate(h->prev_sibling);
+    static void remap(
+        registry_type& reg,
+        const entity_type e,
+        const is_entity_remapper<registry_type> auto& remapper )
+    {
+        if ( auto* h = reg.template try_get<basic_hierarchy>( e ) )
+        {
+            h->parent = remapper( h->parent );
+            h->first_child = remapper( h->first_child );
+            h->last_child = remapper( h->last_child );
+            h->next_sibling = remapper( h->next_sibling );
+            h->prev_sibling = remapper( h->prev_sibling );
         }
     }
 
