@@ -2,7 +2,6 @@
 #include <entt/entity/registry.hpp>
 #include <entt/core/type_info.hpp>
 #include <unordered_set>
-#include <unordered_map>
 #include <vector>
 #include <algorithm>
 #include <utility>
@@ -10,6 +9,8 @@
 // TODO: Should probably make node_id a guid or something.
 #include <random> // node_id_generator
 
+#include "config.hpp"
+#include "entity_remap.hpp"
 #include "hierarchy.hpp"
 
 namespace enttx {
@@ -72,59 +73,6 @@ struct std::hash<enttx::node_id> {
 
 namespace enttx {
 
-/*! @brief A class for remapping entities from one registry to another. */
-template<typename Registry>
-class basic_entity_remap {
-    using traits_type = entt::entt_traits<typename Registry::entity_type>;
-public:
-    /*! @brief Type of registry accepted by the handle. */
-    using registry_type = Registry;
-    /*! @brief Underlying entity identifier. */
-    using entity_type = typename traits_type::value_type;
-    /*! @brief Underlying version type. */
-    using version_type = typename traits_type::version_type;
-
-    [[nodiscard]]
-    entity_type translate(entity_type old) const noexcept {
-        if (old == entt::null) {
-            return entt::null;
-        }
-        if (auto it = entt_map.find(old); it != entt_map.end()) {
-            return it->second;
-        }
-        return entt::null;
-    }
-
-    std::unordered_map<entity_type, entity_type> entt_map;
-};
-
-/*! @brief Checks if a type T has a static member function `remap` accepting `Registry`. */
-template<typename T, typename Registry>
-concept has_member_remap = requires(Registry& reg, typename Registry::entity_type e, const basic_entity_remap<Registry>& remap) {
-    { T::remap(reg, e, remap) } -> std::same_as<void>;
-};
-
-/*!
- * @brief Provides a default implementation of remap_traits for types that have a static member function `remap`.
- * @tparam T The type to check for a static member function `remap`.
- * 
- * Specialize this type to provide a custom implementation of remap for a specific type T.
- */
-template<typename T>
-struct remap_traits {
-    template<typename Registry> 
-    requires has_member_remap<T, Registry>
-    static void remap(Registry& reg, typename Registry::entity_type e, const basic_entity_remap<Registry>& remap) {
-        T::remap(reg, e, remap);
-    }
-};
-
-/*! @brief Checks if a type T has a valid `remap_traits` specialization. */
-template<typename T, typename Registry>
-concept is_remappable = requires(Registry& reg, typename Registry::entity_type e, const basic_entity_remap<Registry>& remap) {
-    { remap_traits<T>::remap(reg, e, remap) } -> std::same_as<void>;
-};
-
 /*! @brief Provides component operations for a specific component type */
 template<typename Registry>
 struct basic_component_ops {
@@ -179,7 +127,7 @@ static basic_component_ops<Registry> get_component_ops() {
         .remove = *remove,
     };
 
-    if constexpr (is_remappable<T, Registry>) {
+    if constexpr (is_remappable<T, Registry, entity_remap>) {
         ops.remap = +[](registry_type& reg, entity_type e, const entity_remap& remap) {
             remap_traits<T>::remap(reg, e, remap);
         };
@@ -251,16 +199,20 @@ public:
     using entity_type = typename traits_type::value_type;
     /*! @brief Underlying version type. */
     using version_type = typename traits_type::version_type;
-    /*! @brief Hierarchy type used internally for def_reg authoring nodes. */
-    using authoring_hierarchy = basic_hierarchy<registry_type, hierarchy_deletion_policy::unhandled, struct _prefab_authoring_hierarchy_tag>;
-    /*! @brief Hierarchy type populated on instantiated entities */
-    using node_hierarchy = NodeHierarchy;
-    /*! @brief Hierarchy type used to express prefab IsA relationships between prefab asset entities in `def_reg`. */
-    using isa_hierarchy = basic_hierarchy<registry_type, hierarchy_deletion_policy::destroy_children, struct _prefab_isa_hierarchy_tag>;
     /*! @brief Entity remap table used to fix up entity-valued components on instantiate. */
     using entity_remap_type = basic_entity_remap<registry_type>;
     /*! @brief Component copy/remove/remap operation table. */
     using component_ops_type = basic_component_ops<registry_type>;
+    /*! @brief Hierarchy type populated on instantiated entities */
+    using node_hierarchy = NodeHierarchy;
+    /*! @brief Hierarchy type used internally for def_reg authoring nodes. */
+    using authoring_hierarchy = basic_hierarchy<registry_type,
+        hierarchy_config{ .deletion_policy = hierarchy_deletion_policy::unhandled },
+        struct _prefab_authoring_hierarchy_tag>;
+    /*! @brief Hierarchy type used to express prefab IsA relationships between prefab asset entities in `def_reg`. */
+    using isa_hierarchy = basic_hierarchy<registry_type,
+        hierarchy_config{ .deletion_policy = hierarchy_deletion_policy::destroy_children },
+        struct _prefab_isa_hierarchy_tag>;
 
     /*! @brief Underlying registry used to store prefab definitions (authoring deltas) in. */
     registry_type& def_reg{};
@@ -279,12 +231,13 @@ public:
 
     /*!
      * @brief Declares a new prefab, optionally deriving ("IsA") from a base prefab.
-     * @return The node_id of the prefab's root node. If `base` is given, this is
-     *         the *same* node_id as the base's root - the variant's root is the
-     *         same logical node as its base's root, just with (possibly) its own
-     *         authored overrides.
+     * @param id The prefab_id to declare.
+     * @param base The base prefab_id to derive from, if any.
+     * @param root_hint A hint for the root node_id, if known.
+     *                  If base is specified, the root_hint is ignored and the base's root node_id is used instead.
+     * @return The node_id of the root node of the prefab.
      */
-    node_id create_prefab(const prefab_id id, const prefab_id base = entt::null) {
+    node_id create_prefab(const prefab_id id, const prefab_id base = entt::null, const node_id root_hint = entt::null) {
         node_id root;
         entity_type base_entity = entt::null;
 
@@ -295,7 +248,7 @@ public:
             ENTTX_ASSERT(def_reg.template all_of<node_id>(base_entity), "Corrupted prefab: base prefab entity has no node_id");
             root = def_reg.template get<node_id>(base_entity);
         } else {
-            root = id_gen_();
+            root = (root_hint != entt::null) ? root_hint : id_gen_();
         }
 
         const entity_type e = ensure_authoring(id, root);
@@ -398,6 +351,46 @@ public:
         prefab_entities_.clear();
         node_parent_.clear();
         node_authoring_.clear();
+    }
+
+    /*! 
+     * @brief Rebuilds the internal cache maps. 
+     * Must be called after modifying the prefab definitions without using the prefab registry's modification methods.
+	 * For example, after loading a prefab registry from disk, or after manually modifying the def_reg directly.
+     */
+    void rebuild_cache() {
+        prefab_entities_.clear();
+        node_parent_.clear();
+        node_authoring_.clear();
+
+        // Rebuild prefab_entities_ lookup
+        for (auto [e, pid] : def_reg.template view<enttx::prefab_id>().each()) {
+            prefab_entities_[pid] = e;
+        }
+
+        // Rebuild node_authoring_ and node_parent_
+        for (auto [root_entity, pid] : def_reg.template view<enttx::prefab_id>().each()) {
+            
+            auto traverse_and_rebuild = [&](entt::entity curr, auto& self) -> void {
+                enttx::node_id curr_id = def_reg.template get<enttx::node_id>(curr);
+                node_authoring_[pid][curr_id] = curr;
+
+                // Rebuild node_parent_
+                if (const auto* auth = def_reg.template try_get<authoring_hierarchy>(curr)) {
+                    if (auth->parent != entt::null) {
+                        enttx::node_id parent_id = def_reg.template get<enttx::node_id>(auth->parent);
+                        node_parent_[curr_id] = parent_id;
+                    }
+                }
+
+				// TODO: Possible to run out of stack here if prefab is very deep, move to temp alloc buffers instead
+                authoring_hierarchy::for_each_child(def_reg, curr, [&](entt::entity child) {
+                    self(child, self);
+                });
+            };
+
+            traverse_and_rebuild(root_entity, traverse_and_rebuild);
+        }
     }
 
     // ------------------------------------------------------------- Instantiate
@@ -793,9 +786,6 @@ public:
         return *this;
     }
 };
-
-/*! @brief Alias declaration for the most common use case. */
-using entity_remap     = basic_entity_remap<entt::registry>;
 
 /*! @brief Alias declaration for the most common use case. */
 using component_ops    = basic_component_ops<entt::registry>;

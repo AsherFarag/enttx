@@ -48,9 +48,9 @@ struct tag_only {
 struct entity_ref {
     entt::entity target{entt::null};
 
-    static void remap(entt::registry& reg, entt::entity e, const enttx::basic_entity_remap<entt::registry>& remap) {
+    static void remap(entt::registry& reg, entt::entity e, const enttx::entity_remap& remap) {
         auto& self = reg.get<entity_ref>(e);
-        self.target = remap.translate(self.target);
+        self.target = remap(self.target);
     }
 };
 

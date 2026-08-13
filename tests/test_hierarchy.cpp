@@ -2,6 +2,7 @@
 
 #include <entt/entt.hpp>
 #include <enttx/hierarchy.hpp>
+#include <enttx/entity_remap.hpp>
 
 #include <vector>
 #include <algorithm>
@@ -17,9 +18,9 @@ struct destroy_tag {};
 struct orphan_tag {};
 struct unhandled_tag {};
 
-using destroy_hierarchy   = basic_hierarchy<entt::registry, hierarchy_deletion_policy::destroy_children, destroy_tag>;
-using orphan_hierarchy    = basic_hierarchy<entt::registry, hierarchy_deletion_policy::orphan_children,  orphan_tag>;
-using unhandled_hierarchy = basic_hierarchy<entt::registry, hierarchy_deletion_policy::unhandled,        unhandled_tag>;
+using destroy_hierarchy   = basic_hierarchy<entt::registry, hierarchy_config{ hierarchy_deletion_policy::destroy_children }, destroy_tag>;
+using orphan_hierarchy    = basic_hierarchy<entt::registry, hierarchy_config{ hierarchy_deletion_policy::orphan_children },  orphan_tag>;
+using unhandled_hierarchy = basic_hierarchy<entt::registry, hierarchy_config{ hierarchy_deletion_policy::unhandled },        unhandled_tag>;
 
 // Collects the direct children of `parent` via the forward child_iterator/children_view.
 template<typename Hierarchy>
@@ -859,18 +860,9 @@ TEST_SUITE("remap") {
 
 // Minimal stand-in satisfying the implicit `remap_traits`-like interface:
 // anything with a `.translate(entity_type)` member.
-struct identity_remap {
-    entt::entity translate(entt::entity e) const { return e; }
-};
-
-struct offsetting_remap {
-    std::unordered_map<entt::entity, entt::entity> table;
-    entt::entity translate(entt::entity e) const {
-        if (e == entt::null) return entt::null;
-        auto it = table.find(e);
-        return it == table.end() ? entt::null : it->second;
-    }
-};
+namespace {
+    constexpr auto identity_remap = +[](entt::entity e) { return e; };
+} // namespace
 
 TEST_CASE("remap with identity translation leaves all links unchanged") {
     entt::registry reg;
@@ -878,9 +870,8 @@ TEST_CASE("remap with identity translation leaves all links unchanged") {
     auto child = reg.create();
     destroy_hierarchy::push_back(reg, parent, child);
 
-    identity_remap ident;
-    destroy_hierarchy::remap(reg, child, ident);
-    destroy_hierarchy::remap(reg, parent, ident);
+    destroy_hierarchy::remap(reg, child, identity_remap);
+    destroy_hierarchy::remap(reg, parent, identity_remap);
 
     CHECK(reg.get<destroy_hierarchy>(child).parent == parent);
     CHECK(reg.get<destroy_hierarchy>(parent).first_child == child);
@@ -899,12 +890,10 @@ TEST_CASE("remap translates all five hierarchy links through the provided remap 
     auto newC1 = reg.create();
     auto newC2 = reg.create();
 
-    offsetting_remap remap;
-    remap.table = {
-        {parent, newParent},
-        {c1, newC1},
-        {c2, newC2},
-    };
+    auto remap = entity_remap{}
+        .map(parent, newParent)
+        .map(c1, newC1)
+        .map(c2, newC2);
 
     destroy_hierarchy::remap(reg, parent, remap);
     destroy_hierarchy::remap(reg, c1, remap);
@@ -926,8 +915,7 @@ TEST_CASE("remap translates all five hierarchy links through the provided remap 
 TEST_CASE("remap on an entity without a hierarchy component is a safe no-op") {
     entt::registry reg;
     auto e = reg.create();
-    identity_remap ident;
-    CHECK_NOTHROW(destroy_hierarchy::remap(reg, e, ident));
+    CHECK_NOTHROW(destroy_hierarchy::remap(reg, e, identity_remap));
 }
 
 TEST_CASE("remap correctly maps entt::null links to entt::null") {
@@ -935,7 +923,7 @@ TEST_CASE("remap correctly maps entt::null links to entt::null") {
     auto lonely = reg.create();
     reg.emplace<destroy_hierarchy>(lonely); // all links default to entt::null
 
-    offsetting_remap remap; // empty table -> translate(null) still returns null
+    entity_remap remap; // empty table -> translate(null) still returns null
     destroy_hierarchy::remap(reg, lonely, remap);
 
     auto& h = reg.get<destroy_hierarchy>(lonely);
