@@ -31,15 +31,3 @@ target_link_libraries(prefab_example
         EnTTx
         EnTT::EnTT
 )
-
-# Prefab Json example
-
-add_executable(prefab_json_example
-    example_prefab_json.cpp
-)
-
-target_link_libraries(prefab_json_example
-    PRIVATE
-        EnTTx
-        EnTT::EnTT
-)
