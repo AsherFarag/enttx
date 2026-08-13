@@ -364,21 +364,21 @@ public:
         node_authoring_.clear();
 
         // Rebuild prefab_entities_ lookup
-        for (auto [e, pid] : def_reg.view<enttx::prefab_id>().each()) {
+        for (auto [e, pid] : def_reg.template view<enttx::prefab_id>().each()) {
             prefab_entities_[pid] = e;
         }
 
         // Rebuild node_authoring_ and node_parent_
-        for (auto [root_entity, pid] : def_reg.view<enttx::prefab_id>().each()) {
+        for (auto [root_entity, pid] : def_reg.template view<enttx::prefab_id>().each()) {
             
             auto traverse_and_rebuild = [&](entt::entity curr, auto& self) -> void {
-                enttx::node_id curr_id = def_reg.get<enttx::node_id>(curr);
+                enttx::node_id curr_id = def_reg.template get<enttx::node_id>(curr);
                 node_authoring_[pid][curr_id] = curr;
 
                 // Rebuild node_parent_
-                if (const auto* auth = def_reg.try_get<authoring_hierarchy>(curr)) {
+                if (const auto* auth = def_reg.template try_get<authoring_hierarchy>(curr)) {
                     if (auth->parent != entt::null) {
-                        enttx::node_id parent_id = def_reg.get<enttx::node_id>(auth->parent);
+                        enttx::node_id parent_id = def_reg.template get<enttx::node_id>(auth->parent);
                         node_parent_[curr_id] = parent_id;
                     }
                 }
