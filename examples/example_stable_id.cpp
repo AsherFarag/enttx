@@ -1,9 +1,9 @@
-#include <iostream>
-#include <string>
-
 #include <enttx/stable_id.hpp>
+
 #include <entt/entity/registry.hpp>
 
+#include <iostream>
+#include <string>
 #include <random> // guid_generator
 
 struct guid {
