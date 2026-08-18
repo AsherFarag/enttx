@@ -31,3 +31,15 @@ target_link_libraries(prefab_example
         EnTTx
         EnTT::EnTT
 )
+
+# Stable Id Example
+
+add_executable(stable_id_example
+    example_stable_id.cpp
+)
+
+target_link_libraries(stable_id_example
+    PRIVATE
+        EnTTx
+        EnTT::EnTT
+)
