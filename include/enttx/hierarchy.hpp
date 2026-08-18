@@ -134,7 +134,7 @@ private:
     using traits_type = entt::entt_traits<typename Registry::entity_type>;
 
 public:
-    /*! @brief Type of registry accepted by the handle. */
+    /*! @brief Type of registry */ 
     using registry_type = Registry;
     /*! @brief Underlying entity identifier. */
     using entity_type = typename traits_type::value_type;
