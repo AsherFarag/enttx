@@ -1,7 +1,10 @@
 #pragma once
+#include "config.hpp"
+
 #include <entt/fwd.hpp>
 #include <entt/container/dense_map.hpp> // For entt::dense_map used in basic_entity_remap
-#include "config.hpp"
+
+#include <concepts>
 
 namespace enttx {
 
@@ -58,7 +61,7 @@ concept is_remappable =
     };
 
 /*! 
- * @brief A class for remapping entities from one registry to another.
+ * @brief A class for remapping old entity identifiers to new ones.
 
  * @code{.cpp}
  * auto remap = enttx::basic_entity_remap<...>{}
@@ -68,12 +71,10 @@ concept is_remappable =
  * // remapped_entity == new_entity
  * @endcode
  */
-template<typename Registry>
+template<typename Entity>
 class basic_entity_remap {
-    using traits_type = entt::entt_traits<typename Registry::entity_type>;
+    using traits_type = entt::entt_traits<Entity>;
 public:
-    /*! @brief Type of registry accepted by the handle. */
-    using registry_type = Registry;
     /*! @brief Underlying entity identifier. */
     using entity_type = typename traits_type::value_type;
     /*! @brief Underlying version type. */
@@ -101,6 +102,6 @@ public:
 };
 
 /*! @brief Alias declaration for the most common use case. */
-using entity_remap = basic_entity_remap<entt::registry>;
+using entity_remap = basic_entity_remap<entt::entity>;
 
 } // namespace enttx

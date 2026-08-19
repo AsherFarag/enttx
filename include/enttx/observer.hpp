@@ -6,6 +6,7 @@
 
 #pragma once
 #include "config.hpp"
+#include "entity_remap.hpp"
 
 #include <entt/entity/fwd.hpp>
 #include <entt/signal/fwd.hpp>
@@ -121,8 +122,9 @@ struct change {
     }
 
     template<typename Entity = entt::entity, typename... Args>
-    void apply_to(entt::storage_for_t<T, Entity, Args...>& storage) const {
-        std::visit([&storage, entity = this->entity](const auto& change) { 
+    void apply_to(entt::storage_for_t<T, Entity, Args...>& storage, const Entity target = entt::null) const {
+        const Entity entity = target == entt::null ? this->entity : target;
+        std::visit([&storage, entity] (const auto& change) { 
             using ChangeType = std::decay_t<decltype(change)>;
 
             // construct
@@ -159,11 +161,13 @@ public:
     /*! @brief Underlying entity identifier. */
     using entity_type = typename traits_type::value_type;
 
+    using entity_remap_type = basic_entity_remap<entity_type>;
+
     struct segment_base {
-        entt::id_type storage_id;
+        entt::id_type storage_id = entt::null;
         virtual ~segment_base() = default;
         virtual std::unique_ptr<segment_base> invert() const = 0;
-        virtual void apply(Registry& registry) const = 0;
+        virtual void apply(Registry& registry, const entity_remap_type* remap = nullptr) const = 0;
     };
 
     template<typename T>
@@ -182,10 +186,19 @@ public:
             return inverted;
         }
 
-        void apply(Registry& registry) const override {
+        void apply(Registry& registry, const entity_remap_type* remap = nullptr) const override {
             auto& storage = registry.template storage<T>(this->storage_id);
-            for (const auto& change : changes) {
-                change.apply_to(storage);
+            if (remap) {
+                for (const auto& change : changes) {
+                    const auto remapped_entity = (*remap)(change.entity);
+                    if (remapped_entity != entt::null) {
+                        change.apply_to(storage, remapped_entity);
+                    }
+                }
+            } else {
+                for (const auto& change : changes) {
+                    change.apply_to(storage);
+                }
             }
         }
     };
@@ -201,9 +214,9 @@ public:
         return inverted;
     }
 
-    void apply(Registry& registry) const {
+    void apply(Registry& registry, const entity_remap_type* remap = nullptr) const {
         for (const auto& segment : segments) {
-            segment->apply(registry);
+            segment->apply(registry, remap);
         }
     }
 

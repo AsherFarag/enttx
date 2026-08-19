@@ -25,24 +25,23 @@ int main()
 	entt::registry reg;
 
 	const auto entt = reg.create();
-	reg.emplace<transform>( entt, 0.f, 0.f );
-    
 	auto observer = enttx::observe<transform>( reg );
 
+	reg.emplace<transform>( entt, 0.f, 0.f );
 	reg.patch<transform>( entt, []( transform& t ) { t.x = 10.f; } );
 	reg.patch<transform>( entt, []( transform& t ) { t.y = 5.f; } );
 
-	observer.disconnect();
-
-	enttx::commit commit;
+	enttx::commit commit{};
 	observer.collect( commit );
 
-	std::cout << "Before commit apply: " << reg.get<transform>( entt ) << std::endl;
+	enttx::entity_remap remap{};
+	remap.map( entt, reg.create() );
 
-	auto inverted = commit.invert();
-	inverted.apply( reg );
-	std::cout << "After inverted commit apply: " << reg.get<transform>( entt ) << std::endl;
+	commit.apply( reg, &remap );
 
-	commit.apply( reg );
-	std::cout << "After commit apply: " << reg.get<transform>( entt ) << std::endl;
+	std::cout << "Remapped entity transform: " << reg.get<transform>( remap( entt ) ) << std::endl;
+
+	commit.invert().apply( reg, &remap );
+
+	std::cout << "Remapped entity transform: " << reg.any_of<transform>( remap( entt ) ) << std::endl;
 }
