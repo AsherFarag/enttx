@@ -88,7 +88,7 @@ public:
 
     using copy_fn   = void(const registry_type&, entity_type, registry_type&, entity_type);
     using remove_fn = void(registry_type&, entity_type);
-    using remap_fn  = void(registry_type&, entity_type, const basic_entity_remap<registry_type>&);
+    using remap_fn  = void(registry_type&, entity_type, const basic_entity_remap<entity_type>&);
 
 	/*! @brief Deep copy operation for this component type from one registry/entity to another. */
     copy_fn   &copy;
@@ -104,7 +104,7 @@ static basic_component_ops<Registry> get_component_ops() {
     using registry_type    = Registry;
     using component_ops    = basic_component_ops<registry_type>;
     using entity_type      = typename component_ops::entity_type;
-    using entity_remap     = basic_entity_remap<registry_type>;
+    using entity_remap     = basic_entity_remap<entity_type>;
     using component_traits = entt::component_traits<T, entity_type>;
 
     static auto copy = +[](const registry_type& src, entity_type se, registry_type& dst, entity_type de) {
@@ -200,7 +200,7 @@ public:
     /*! @brief Underlying version type. */
     using version_type = typename traits_type::version_type;
     /*! @brief Entity remap table used to fix up entity-valued components on instantiate. */
-    using entity_remap_type = basic_entity_remap<registry_type>;
+    using entity_remap_type = basic_entity_remap<entity_type>;
     /*! @brief Component copy/remove/remap operation table. */
     using component_ops_type = basic_component_ops<registry_type>;
     /*! @brief Hierarchy type populated on instantiated entities */

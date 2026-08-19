@@ -39,6 +39,16 @@ class basic_commit;
 
 using commit = basic_commit<entt::registry>;
 
+template<typename Commit>
+class basic_commit_serializer;
+
+using commit_serializer = basic_commit_serializer<commit>;
+
+template<typename Commit>
+class basic_commit_deserializer;
+
+using commit_deserializer = basic_commit_deserializer<commit>;
+
 template<typename T> 
 struct construct_change {
     /*! @brief Value type of the component being constructed. */
@@ -107,7 +117,7 @@ struct change {
     /*! @brief Underlying entity identifier. */
     using entity_type = Entity;
     /*! @brief Type of the change being tracked. */
-    using variant_type = std::variant<construct_change<T>, update_change<T>, destroy_change<T>>;
+    using variant_type = std::variant<construct_change<T>, destroy_change<T>, update_change<T>>;
 
     entity_type entity;
     variant_type payload;
@@ -151,9 +161,12 @@ struct change {
 };
 
 template<typename Registry>
-class basic_commit final {
+class basic_commit {
 private:
     using traits_type = entt::entt_traits<typename Registry::entity_type>;
+
+    friend class basic_commit_serializer<basic_commit<Registry>>;
+    friend class basic_commit_deserializer<basic_commit<Registry>>;
 
 public:
     /*! @brief Type of registry */ 
@@ -161,13 +174,35 @@ public:
     /*! @brief Underlying entity identifier. */
     using entity_type = typename traits_type::value_type;
 
-    using entity_remap_type = basic_entity_remap<entity_type>;
+    using entity_remap_type = basic_entity_remap<entity_type, entity_type>;
 
+	[[nodiscard]]
+    basic_commit invert() const {
+        basic_commit inverted;
+        for (const auto& [storage_id, segment] : segments) {
+            inverted.segments[storage_id] = segment->invert();
+        }
+        return inverted;
+    }
+
+    void apply(Registry& registry, const entity_remap_type* remap = nullptr) const {
+        for (const auto& [storage_id, segment] : segments) {
+            segment->apply(registry, storage_id, remap);
+        }
+    }
+
+    template<typename T>
+    void append_segment(std::vector<change<T, entity_type>>&& changes, const entt::id_type storage_id = entt::type_hash<T>::value()) {
+        auto s = std::make_unique<segment<T>>();
+        s->changes = std::move(changes);
+        segments[storage_id] = std::move(s);
+    }
+
+private:
     struct segment_base {
-        entt::id_type storage_id = entt::null;
         virtual ~segment_base() = default;
         virtual std::unique_ptr<segment_base> invert() const = 0;
-        virtual void apply(Registry& registry, const entity_remap_type* remap = nullptr) const = 0;
+        virtual void apply(Registry& registry, const entt::id_type storage_id, const entity_remap_type* remap = nullptr) const = 0;
     };
 
     template<typename T>
@@ -178,7 +213,6 @@ public:
 
         std::unique_ptr<segment_base> invert() const override {
             auto inverted = std::make_unique<segment<T>>();
-            inverted->storage_id = this->storage_id;
             inverted->changes.reserve(changes.size());
             for (auto rit = changes.rbegin(); rit != changes.rend(); ++rit) {
                 inverted->changes.emplace_back(rit->invert());
@@ -186,8 +220,8 @@ public:
             return inverted;
         }
 
-        void apply(Registry& registry, const entity_remap_type* remap = nullptr) const override {
-            auto& storage = registry.template storage<T>(this->storage_id);
+        void apply(Registry& registry, const entt::id_type storage_id, const entity_remap_type* remap = nullptr) const override {
+            auto& storage = registry.template storage<T>(storage_id);
             if (remap) {
                 for (const auto& change : changes) {
                     const auto remapped_entity = (*remap)(change.entity);
@@ -203,30 +237,86 @@ public:
         }
     };
 
-    std::vector<std::unique_ptr<segment_base>> segments;
+    entt::dense_map<entt::id_type, std::unique_ptr<segment_base>> segments;
+};
 
-	[[nodiscard]]
-    basic_commit invert() const {
-        basic_commit inverted;
-        for (const auto& segment : segments) {
-            inverted.segments.emplace_back(segment->invert());
+template<typename Commit>
+class basic_commit_serializer {
+public:
+    using commit_type = Commit;
+
+    basic_commit_serializer(const commit_type& commit) noexcept
+        : commit{&commit} {}
+
+    basic_commit_serializer(const basic_commit_serializer&) = delete;
+
+    basic_commit_serializer(basic_commit_serializer&&) noexcept = default;
+
+    ~basic_commit_serializer() = default;
+
+    basic_commit_serializer& operator=(const basic_commit_serializer&) = delete;
+
+    basic_commit_serializer& operator=(basic_commit_serializer&&) noexcept = default;
+
+    template<typename T, typename Archive>
+    const basic_commit_serializer& get(Archive& archive, const entt::id_type storage_id = entt::type_hash<T>::value()) const {
+        using segment_type = typename commit_type::template segment<T>;
+        const auto it = commit->segments.find(storage_id);
+
+        if (it == commit->segments.end()) {
+            archive(std::size_t{0}); // No changes for this storage_id, serialize as empty
+            return *this;
         }
-        return inverted;
-    }
 
-    void apply(Registry& registry, const entity_remap_type* remap = nullptr) const {
-        for (const auto& segment : segments) {
-            segment->apply(registry, remap);
+        const auto& changes = static_cast<const segment_type&>(*it->second).changes;
+        archive(changes.size());
+
+        for (const auto& change : changes) {
+            archive(change.entity); // TODO: We should use a remapper here. For example, mapping the entt::entity to a network_id etc.
+            archive(static_cast<std::uint8_t>(change.payload.index()));
+
+            std::visit([&archive](const auto& c) {
+                using change_type = std::decay_t<decltype(c)>;
+                if constexpr(std::is_same_v<change_type, update_change<T>>) {
+                    archive(c.old_value, c.new_value);
+                } else if constexpr(!is_pageless<T>) {
+                    archive(c.value); // construct_change<T> / destroy_change<T>
+                }
+            }, change.payload);
         }
+
+        return *this;
     }
 
-    template<typename T>
-    void append_segment(entt::id_type storage_id, std::vector<change<T, entity_type>> changes) {
-        auto s = std::make_unique<segment<T>>();
-        s->storage_id = storage_id;
-        s->changes = std::move(changes);
-        segments.emplace_back(std::move(s));
+private:
+    const commit_type* commit;
+};
+
+template<typename Commit>
+struct basic_commit_deserializer {
+public:
+    using commit_type = Commit;
+
+    basic_commit_deserializer(commit_type& commit) noexcept
+        : commit{&commit} {}
+
+    basic_commit_deserializer(const basic_commit_deserializer&) = delete;
+
+    basic_commit_deserializer(basic_commit_deserializer&&) noexcept = default;
+
+    ~basic_commit_deserializer() = default;
+
+    basic_commit_deserializer& operator=(const basic_commit_deserializer&) = delete;
+
+    basic_commit_deserializer& operator=(basic_commit_deserializer&&) noexcept = default;
+
+    template<typename T, typename Archive>
+    const basic_commit_deserializer& get(Archive& archive, const entt::id_type storage_id = entt::type_hash<T>::value()) const {
+        return *this;
     }
+
+private:
+    commit_type* commit;
 };
 
 template<typename Registry>
@@ -309,7 +399,7 @@ public:
 
     void collect(commit_base_type& commit) override {
         if (!changes.empty()) {
-            commit.template append_segment<value_type>(storage_id, std::move(changes));
+            commit.template append_segment<value_type>(std::move(changes), storage_id);
             changes.clear();
         }
     }

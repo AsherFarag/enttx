@@ -1,10 +1,9 @@
-#pragma once
-
 /*!
  * @file stable_id.hpp
  * @brief Provides stable identifiers and generators for use with EnTT.
  */
 
+#pragma once
 #include "config.hpp"
 #include <entt/entity/entity.hpp> // For entt::null and entt::null_t
 #include <cstdint>

@@ -71,34 +71,37 @@ concept is_remappable =
  * // remapped_entity == new_entity
  * @endcode
  */
-template<typename Entity>
-class basic_entity_remap {
-    using traits_type = entt::entt_traits<Entity>;
-public:
-    /*! @brief Underlying entity identifier. */
-    using entity_type = typename traits_type::value_type;
-    /*! @brief Underlying version type. */
-    using version_type = typename traits_type::version_type;
+template<std::equality_comparable_with<entt::null_t> Key, typename Value = Key>
+struct basic_entity_remap final {
+	/*! @brief Key type used for retrieving a value. */
+    using key_type = Key;
+	/*! @brief Value type stored in the remap. */
+    using value_type = Value;
 
-    /*! @brief Maps an old entity identifier to a new one. Returns itself for method chaining. */
-    basic_entity_remap& map(entity_type old, entity_type new_entity) {
-        entt_map[old] = new_entity;
+    /*! @brief Maps a key to a value. */
+    basic_entity_remap& map(const key_type key, const value_type value) {
+        entt_map[key] = value;
         return *this;
     }
 
-    /*! @brief Translates an old entity identifier to a new one. Returns entt::null if the old entity is not mapped. */
-    [[nodiscard]]
-    entity_type operator()(entity_type old) const noexcept {
-        if (old == entt::null) {
+    /*! @brief Removes a key-value mapping. */
+    basic_entity_remap& unmap(const key_type key) {
+        entt_map.erase(key);
+        return *this;
+    }
+
+    /*! @brief Remaps a key to its corresponding value. If the key is not found, returns entt::null. */
+    [[nodiscard]] value_type operator()(const key_type key) const noexcept {
+        if (key == entt::null) {
             return entt::null;
         }
-        if (auto it = entt_map.find(old); it != entt_map.end()) {
+        if (auto it = entt_map.find(key); it != entt_map.end()) {
             return it->second;
         }
         return entt::null;
     }
 
-    entt::dense_map<entity_type, entity_type> entt_map;
+    entt::dense_map<key_type, value_type> entt_map;
 };
 
 /*! @brief Alias declaration for the most common use case. */
