@@ -5,7 +5,7 @@
  */
 
 #pragma once
-#include "config.hpp"
+#include "core.hpp"
 #include "entity_remap.hpp"
 
 #include <entt/entity/fwd.hpp>
@@ -17,10 +17,6 @@
 
 namespace enttx
 {
-
-// TODO: Should be in a core.hpp? 
-template<typename T>
-concept is_pageless = entt::component_traits<T>::page_size == 0u;
 
 template<typename>
 struct construct_change;
@@ -331,6 +327,9 @@ public:
     virtual void collect(commit_type& commit) = 0;
 };
 
+namespace internal 
+{
+
 template<typename Storage>
 concept is_change_observer_storage = requires (Storage& s) {
     typename Storage::value_type;
@@ -431,12 +430,13 @@ private:
         }
     }
 };
+} // namespace internal
 
 template<typename T, typename Registry>
 [[nodiscard]] auto observe(Registry& registry, entt::id_type storage_id = entt::type_hash<T>::value()) {
     auto& storage = registry.template storage<T>(storage_id);
     using storage_type = std::remove_reference_t<decltype(storage)>;
-    return basic_observer<storage_type>{storage_id, storage};
+    return internal::basic_observer<storage_type>{storage_id, storage};
 }
 
 } // namespace enttx

@@ -1,13 +1,22 @@
+/*!
+ * @file hierarchy.hpp
+ * @brief Adds a customisable entity hierarchy component, it is allocation-free 
+ *        and allows for O(1) operations like a double-linked list, 
+ *        while also allowing for cache-friendly iteration over the 
+ *        children of a parent entity.
+ */
+
 #pragma once
+#include "config.hpp"
+#include "entity_remap.hpp"
+
 #include <entt/entity/entity.hpp>
 #include <entt/entity/fwd.hpp>
 #include <entt/signal/sigh.hpp>
+
 #include <cstdint>
 #include <concepts>
 #include <functional>
-
-#include "config.hpp"
-#include "entity_remap.hpp"
 
 namespace enttx {
 
@@ -25,7 +34,8 @@ enum class hierarchy_deletion_policy : std::uint8_t {
 struct hierarchy_config {
     /*! @brief Deletion policy for handling hierarchy relationships on destruction. */
     hierarchy_deletion_policy deletion_policy{hierarchy_deletion_policy::destroy_children};
-    /*! @brief Whether to enable events for hierarchy changes. Set to false to avoid the overhead of event publishing if you don't need it. */
+    /*! @brief Whether to enable events for hierarchy changes. 
+               Set to false to avoid the overhead of event publishing if you don't need it. */
     bool enable_events{true};
 };
 
