@@ -44,13 +44,13 @@ target_link_libraries(stable_id_example
         EnTT::EnTT
 )
 
-# change_mixin_example
+# observer_example
 
-add_executable(change_mixin_example
-    example_change_mixin.cpp
+add_executable(observer_example
+    example_observer.cpp
 )
 
-target_link_libraries(change_mixin_example
+target_link_libraries(observer_example
     PRIVATE
         EnTTx
         EnTT::EnTT
