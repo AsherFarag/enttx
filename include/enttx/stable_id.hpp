@@ -5,14 +5,29 @@
 
 #pragma once
 #include "config.hpp"
-#include <entt/entity/entity.hpp> // For entt::null and entt::null_t
+
+#include <entt/entity/entity.hpp>
+
 #include <cstdint>
 #include <concepts>
 
 namespace enttx
 {
 
-template<typename, typename = void>
+/**
+ * @brief Customization point for stable identifier value types.
+ *
+ * A specialization must provide:
+ *
+ * using value_type = ...;
+ * static constexpr value_type null() noexcept;
+ * 
+ * optional: static constexpr value_type next(value_type);
+ */
+template<typename>
+struct stable_id_value_traits;
+
+template<typename Value, typename = void, typename = stable_id_value_traits<Value>>
 struct basic_stable_id;
 
 template<typename>
@@ -30,11 +45,7 @@ using monotonic_stable_id_generator = basic_monotonic_stable_id_generator<stable
 /*! @brief Alias declaration for the most common use case. */
 using random_stable_id_generator = basic_random_stable_id_generator<stable_id>;
 
-/*! @brief */
-template<typename Value>
-struct stable_id_value_traits;
-
-template<std::integral Value>
+template<std::unsigned_integral Value>
 struct stable_id_value_traits<Value> {
     /*! @brief Underlying value type of the stable identifier. */
     using value_type = Value;
@@ -46,16 +57,22 @@ struct stable_id_value_traits<Value> {
     static constexpr value_type next(value_type current) { return ++current; }
 };
 
-/*! @brief */
-template<typename Value, typename Tag>
-struct basic_stable_id {
+/*! 
+ * @brief Basic stable identifier.
+ * @tparam Value Underlying value type of the stable identifier.
+ * @tparam Tag Tag type to differentiate stable identifiers of the same underlying value type.
+ */
+template<typename Value, typename Tag, typename ValueTraits>
+requires std::is_same_v<Value, typename ValueTraits::value_type>
+struct basic_stable_id<Value, Tag, ValueTraits> {
     /*! @brief Underlying value type of the stable identifier. */
     using value_type = Value;
+    /*! @brief Traits for the underlying value type of the stable identifier. */
+    using value_traits = ValueTraits;
     /*! @brief Tag type to differentiate stable identifiers of the same underlying value type. */
     using tag_type = Tag;
-    /*! @brief Traits for the underlying value type of the stable identifier. */
-    using value_traits = stable_id_value_traits<Value>;
 
+    /*! @brief Underlying value of the stable identifier. */
     Value value;
 
     constexpr basic_stable_id() noexcept : value{value_traits::null()} {}
@@ -66,9 +83,16 @@ struct basic_stable_id {
 
     constexpr bool operator==(const basic_stable_id&) const noexcept = default;
     constexpr bool operator==(entt::null_t) const noexcept { return value == value_traits::null(); }
+
+    constexpr auto operator<=>(const basic_stable_id&) const noexcept = default;
+    constexpr auto operator<=>(entt::null_t) const noexcept { return value <=> value_traits::null(); }
 };
 
-/*! @brief */
+/*! 
+ * @brief Generates stable identifiers in a monotonic fashion.
+ * @tparam StableId Type of stable identifier to generate.
+ * @remark Each call to the generator will produce a new stable identifier that is value_traits::next() of the previous one.
+ */
 template<typename StableId>
 requires requires(typename StableId::value_type v) {
     { typename StableId::value_traits::next(v) } -> std::same_as<typename StableId::value_type>;
@@ -85,23 +109,65 @@ struct basic_monotonic_stable_id_generator<StableId> {
     value_type current{value_traits::null()};
 
     [[nodiscard]]
-    stable_id_type operator()() {
+    constexpr stable_id_type operator()() {
         return stable_id_type{ current = value_traits::next(current) };
     }
 };
 
-namespace internal 
+namespace internal
 {
-struct splitmix_u32 { 
+
+template<std::unsigned_integral Value>
+struct splitmix;
+
+template<>
+struct splitmix<std::uint32_t> {
+    using result_type = std::uint32_t;
+
+    result_type state;
+
+    [[nodiscard]] constexpr result_type operator()() noexcept {
+        std::uint32_t z = (state += 0x9E3779B9u);
+
+        z = (z ^ (z >> 16)) * 0x85EBCA6Bu;
+        z = (z ^ (z >> 13)) * 0xC2B2AE35u;
+
+        return z ^ (z >> 16);
+    }
 };
 
-struct splitmix_u64 {
+template<>
+struct splitmix<std::uint64_t> {
+    using result_type = std::uint64_t;
+
+    result_type state;
+
+    [[nodiscard]] constexpr result_type operator()() noexcept {
+        std::uint64_t z = (state += 0x9E3779B97F4A7C15ull);
+
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+
+        return z ^ (z >> 31);
+    }
 };
+
 } // namespace internal
 
-/*! @brief */
+/*! 
+ * @brief Generates stable identifiers via a pseudo-random number generator using the splitmix algorithm.
+ * @tparam StableId Type of stable identifier to generate.
+ * @warning This generator is not cryptographically secure and should not be used for security purposes.
+ * @remark The underlying value type should be 64 bits or more to ensure a good distribution of generated values. 
+ *         Lower bit widths may result in a poor distribution of generated values and an increased likelihood of collisions.
+ * 
+ * @code .cpp
+ * enttx::random_stable_id_generator gen{std::random_device{}()};
+ * @endcode
+ */
 template<typename StableId>
-struct basic_random_stable_id_generator {
+requires std::unsigned_integral<typename StableId::value_type>
+struct basic_random_stable_id_generator<StableId> {
     /*! @brief Underlying value type of the stable identifier. */
     using value_type = typename StableId::value_type;
     /*! @brief Traits for the underlying value type of the stable identifier. */
@@ -109,23 +175,38 @@ struct basic_random_stable_id_generator {
     /*! @brief Stable identifier type. */
     using stable_id_type = StableId;
 
-    value_type state{ value_traits::null() };
+public:
+    constexpr basic_random_stable_id_generator(value_type seed) noexcept
+        : generator{seed} {}
+
+    constexpr void seed(value_type new_seed) noexcept {
+        generator.state = new_seed;
+    }
 
     [[nodiscard]]
-    stable_id_type operator()() noexcept {
-        value_type r = value_traits::null();
-        return stable_id_type{r};
+    constexpr stable_id_type operator()() noexcept {
+        value_type value;
+        do {
+            value = generator();
+        } while (value == value_traits::null());
+        return stable_id_type{value};
     }
+
+private:
+    internal::splitmix<value_type> generator;
 };
+
+static_assert(std::is_trivially_copyable_v<enttx::stable_id>);
+static_assert(std::is_standard_layout_v<enttx::stable_id>);
 
 } // namespace enttx
 
 namespace std 
 {
-template<typename Value, typename Tag>
-struct hash<enttx::basic_stable_id<Value, Tag>> {
+template<typename Value, typename ValueTraits, typename Tag>
+struct hash<enttx::basic_stable_id<Value, ValueTraits, Tag>> {
 	[[nodiscard]]
-	size_t operator()(const enttx::basic_stable_id<Value, Tag>& id) const noexcept {
+	size_t operator()(const enttx::basic_stable_id<Value, ValueTraits, Tag>& id) const noexcept {
 		return std::hash<Value>{}(id.value);
 	}
 };

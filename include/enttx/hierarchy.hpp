@@ -133,12 +133,12 @@ struct basic_children_view {
  * 
  * @tparam Registry Basic registry type.
  * @tparam Config Deletion policy and event-enablement configuration for the hierarchy.
- * @tparam _ Tag to distinguish different hierarchies in the same registry.
+ * @tparam Tag Type to distinguish different hierarchies in the same registry.
  */
 template<
     typename Registry, 
     hierarchy_config Config = hierarchy_config{},
-    typename = void>
+    typename Tag = void>
 struct basic_hierarchy {
 private:
     using traits_type = entt::entt_traits<typename Registry::entity_type>;
@@ -152,6 +152,8 @@ public:
     using version_type = typename traits_type::version_type;
     /*! @brief Unsigned integer type. */
     using size_type = std::uint32_t;
+    /*! @brief Tag type to distinguish different hierarchies in the same registry. */
+    using tag_type = Tag;
     /*! @brief Configuration for the hierarchy. */
     static constexpr hierarchy_config config{ Config };
     /*! @brief Deletion policy for handling hierarchy relationships on destruction. */

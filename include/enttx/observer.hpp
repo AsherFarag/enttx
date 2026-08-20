@@ -54,6 +54,38 @@ class basic_commit_loader;
 using commit_loader = basic_commit_loader<commit>;
 
 /*!
+ * @brief Base class for observers that track changes in a registry.
+ * @tparam Registry Type of the registry being observed.
+ */
+template<typename Registry>
+class basic_observer_base {
+private:
+    using traits_type = entt::entt_traits<typename Registry::entity_type>;
+
+public:
+    /*! @brief Type of registry */ 
+    using registry_type = Registry;
+    /*! @brief Underlying entity identifier. */
+    using entity_type = typename traits_type::value_type;
+    /*! @brief Commit type associated with this observer. */
+    using commit_type = basic_commit<Registry>;
+    
+    /*! @brief Default constructor. `connect()` is expected to be called within the derived class constructor. */
+    basic_observer_base() = default;
+    /*! @brief Virtual destructor. `disconnect()` is expected to be called within the derived class destructor. */
+    virtual ~basic_observer_base() = default;
+
+    /*! @brief Connects the observer events to the registry. */
+	virtual void connect() = 0;
+    
+    /*! @brief Disconnects the observer events from the registry. */
+	virtual void disconnect() = 0;
+
+    /*! @brief Collects the changes observed since the last collection and stores them in the provided commit. */
+    virtual void collect(commit_type& commit) = 0;
+};
+
+/*!
  * @brief Represents a change to a component of type `T` associated with an entity of type `Entity`.
  * @tparam T Type of the component being changed.
  * @tparam Entity Type of the entity associated with the change.
@@ -145,18 +177,6 @@ struct change<T, Entity> {
             storage.erase(entity);
         }
     }
-};
-
-template<typename Registry>
-class basic_observer_base {
-public:
-    using commit_type = basic_commit<Registry>;
-    
-    virtual ~basic_observer_base() = default;
-
-	virtual void connect() = 0;
-	virtual void disconnect() = 0;
-    virtual void collect(commit_type& commit) = 0;
 };
 
 template<typename Registry>
@@ -295,6 +315,9 @@ private:
 };
 
 template<typename Commit>
+basic_commit_snapshot(const Commit& commit) -> basic_commit_snapshot<Commit>;
+
+template<typename Commit>
 struct basic_commit_loader {
 public:
     using commit_type = Commit;
@@ -387,6 +410,9 @@ public:
 private:
     commit_type* commit;
 };
+
+template<typename Commit>
+basic_commit_loader(Commit& commit) -> basic_commit_loader<Commit>;
 
 namespace internal 
 {

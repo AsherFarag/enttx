@@ -32,7 +32,7 @@ using prefab_id = entt::id_type;
  * This is what allows derived prefabs to target a specific inherited node
  * for overrides.
  */
-using node_id = basic_stable_id<std::uint64_t, struct node_id_tag>;
+using node_id = basic_stable_id<std::uint32_t, struct node_id_tag>;
 
 /*! @brief Generates unique identifiers for nodes in the prefab system. */
 using node_id_generator = basic_monotonic_stable_id_generator<node_id>;

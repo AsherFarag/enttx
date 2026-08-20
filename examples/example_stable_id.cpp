@@ -129,7 +129,7 @@ int main()
 
 	std::cout << "=== Random Generation Example ===\n";
 	{
-		enttx::random_stable_id_generator gen{};
+		enttx::random_stable_id_generator gen{ std::random_device{}() };
 		for ( int i = 0; i < 10; ++i )
 		{
 			auto id = gen();
