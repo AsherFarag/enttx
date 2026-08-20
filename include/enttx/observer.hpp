@@ -105,7 +105,8 @@ struct change {
     }
 };
 
-template<is_pageless T, typename Entity>
+template<typename T, typename Entity>
+requires is_pageless<T, Entity>
 struct change<T, Entity> {
     struct construct {};
 
@@ -139,6 +140,18 @@ struct change<T, Entity> {
             storage.erase(entity);
         }
     }
+};
+
+template<typename Registry>
+class basic_observer_base {
+public:
+    using commit_type = basic_commit<Registry>;
+    
+    virtual ~basic_observer_base() = default;
+
+	virtual void connect() = 0;
+	virtual void disconnect() = 0;
+    virtual void collect(commit_type& commit) = 0;
 };
 
 template<typename Registry>
@@ -254,10 +267,11 @@ public:
 
         for (const auto& change : changes) {
             using change_type = std::decay_t<decltype(change)>;
+            using entity_type = typename change_type::entity_type;
             archive(change.entity); // TODO: We should use a remapper here. For example, mapping the entt::entity to a network_id etc.
             archive(static_cast<std::uint8_t>(change.payload.index()));
 
-            if constexpr(!is_pageless<T>) {
+            if constexpr(!is_pageless<T, entity_type>) {
                 std::visit([&archive](const auto& c) {
                     if constexpr(std::is_same_v<std::decay_t<decltype(c)>, typename change_type::update>) {
                         archive(c.old_value, c.new_value);
@@ -321,7 +335,7 @@ public:
             switch (index) {
             case 0: {
                 using construct = typename change_type::construct;
-                if constexpr(is_pageless<T>) {
+                if constexpr(is_pageless<T, entity_type>) {
                     payload = construct{};
                 } else {
                     T value{};
@@ -332,7 +346,7 @@ public:
             }
             case 1: {
                 using destruct = typename change_type::destruct;
-                if constexpr(is_pageless<T>) {
+                if constexpr(is_pageless<T, entity_type>) {
                     payload = destruct{};
                 } else {
                     T value{};
@@ -342,7 +356,7 @@ public:
                 break;
             }
             case 2: {
-                if constexpr(is_pageless<T>) {
+                if constexpr(is_pageless<T, entity_type>) {
                     ENTTX_ASSERT(false, "update_change encountered for pageless type during deserialization");
                 } else {
                     using update_change = typename change_type::update;
@@ -369,18 +383,6 @@ private:
     commit_type* commit;
 };
 
-template<typename Registry>
-class basic_observer_base {
-public:
-    using commit_type = basic_commit<Registry>;
-    
-    virtual ~basic_observer_base() = default;
-
-	virtual void connect() = 0;
-	virtual void disconnect() = 0;
-    virtual void collect(commit_type& commit) = 0;
-};
-
 namespace internal 
 {
 
@@ -392,7 +394,7 @@ concept is_change_observer_storage = requires (Storage& s) {
     { s.on_destroy() };
 }
 && (
-    is_pageless<typename Storage::value_type> 
+    is_pageless<typename Storage::value_type, typename Storage::entity_type>
     ||
     requires (Storage& s) {
         { s.on_pre_update() };
@@ -434,7 +436,7 @@ public:
 
     void connect() override {
         storage.on_construct().template connect<&basic_observer::on_construct>(*this);
-        if constexpr(!is_pageless<value_type>) {
+        if constexpr(!is_pageless<value_type, entity_type>) {
             storage.on_pre_update().template connect<&basic_observer::on_pre_update>(*this);
             storage.on_update().template connect<&basic_observer::on_update>(*this);
         }
@@ -443,7 +445,7 @@ public:
 
     void disconnect() override {
         storage.on_construct().template disconnect<&basic_observer::on_construct>(*this);
-        if constexpr(!is_pageless<value_type>) {
+        if constexpr(!is_pageless<value_type, entity_type>) {
             storage.on_pre_update().template disconnect<&basic_observer::on_pre_update>(*this);
             storage.on_update().template disconnect<&basic_observer::on_update>(*this);
         }
@@ -460,22 +462,22 @@ public:
 
 private:
     // TODO: See comment in on_update 
-    std::optional<std::conditional_t<!is_pageless<value_type>, value_type, std::monostate>> pre_update_value;
+    std::optional<std::conditional_t<!is_pageless<value_type, entity_type>, value_type, std::monostate>> pre_update_value;
 
     void on_construct(const entity_type entity) {
-        if constexpr(is_pageless<value_type>) {
+        if constexpr(is_pageless<value_type, entity_type>) {
             changes.emplace_back(entity, typename change_type::construct{});
         } else {
             changes.emplace_back(entity, typename change_type::construct{storage.get(entity)});
         }
     }
 
-    void on_pre_update(const entity_type entity) requires(!is_pageless<value_type>) {
+    void on_pre_update(const entity_type entity) requires(!is_pageless<value_type, entity_type>) {
         ENTTX_ASSERT(!pre_update_value.has_value(), "Pre-update value already set for entity");
         pre_update_value = storage.get(entity);
     }
 
-    void on_update(const entity_type entity) requires(!is_pageless<value_type>) {
+    void on_update(const entity_type entity) requires(!is_pageless<value_type, entity_type>) {
         // TODO: Figure out if this is safe and the right way to do it.
         // Need to check if its legal that patch cannot modify the registry in a way that would invalidate this.
         changes.emplace_back(entity, typename change_type::update{std::move(pre_update_value).value(), storage.get(entity)});
@@ -483,7 +485,7 @@ private:
     }
 
     void on_destroy(const entity_type entity) {
-        if constexpr(is_pageless<value_type>) {
+        if constexpr(is_pageless<value_type, entity_type>) {
             changes.emplace_back(entity, typename change_type::destruct{});
         } else {
             changes.emplace_back(entity, typename change_type::destruct{storage.get(entity)});

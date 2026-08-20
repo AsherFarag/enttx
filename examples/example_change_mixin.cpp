@@ -89,7 +89,7 @@ struct input_text_archive {
 int main()
 {
 	entt::registry reg;
-	const auto entt = reg.create();
+	const auto entity = reg.create();
 
 	enttx::observers observers;
 	observers.emplace_back( enttx::observe<transform>( reg ) );
@@ -97,10 +97,10 @@ int main()
 
 	enttx::commit commit_a{}; 
 	{
-		reg.emplace<empty>( entt );
-		reg.emplace<transform>( entt, 0.f, 0.f );
-		reg.patch<transform>( entt, []( transform& t ) { t.x = 10.f; } );
-		reg.patch<transform>( entt, []( transform& t ) { t.y = 5.f; } );
+		reg.emplace<empty>( entity );
+		reg.emplace<transform>( entity, 0.f, 0.f );
+		reg.patch<transform>( entity, []( transform& t ) { t.x = 10.f; } );
+		reg.patch<transform>( entity, []( transform& t ) { t.y = 5.f; } );
 
 		for (auto& observer : observers) {
 			observer->collect( commit_a ); 
@@ -110,8 +110,8 @@ int main()
 	// Print the current state of the registry (changes made by `commit_a`)
 	std::cout << "=== Commit A ===" << std::endl;
 	{
-		std::cout << std::format( "transform: x={}, y={}\n", reg.get<transform>( entt ).x, reg.get<transform>( entt ).y );
-		std::cout << std::format( "has 'empty': {}\n", reg.all_of<empty>( entt ) ? "true" : "false" );
+		std::cout << std::format( "transform: x={}, y={}\n", reg.get<transform>( entity ).x, reg.get<transform>( entity ).y );
+		std::cout << std::format( "has 'empty': {}\n", reg.all_of<empty>( entity ) ? "true" : "false" );
 	}
 	std::cout << std::endl;
 
@@ -144,8 +144,8 @@ int main()
 		auto inv_commit_b = commit_b.invert();
 		inv_commit_b.apply( reg );
 
-		std::cout << std::format( "has 'transform': {}\n", reg.all_of<transform>( entt ) ? "true" : "false" );
-		std::cout << std::format( "has 'empty': {}\n", reg.all_of<empty>( entt ) ? "true" : "false" );
+		std::cout << std::format( "has 'transform': {}\n", reg.all_of<transform>( entity ) ? "true" : "false" );
+		std::cout << std::format( "has 'empty': {}\n", reg.all_of<empty>( entity ) ? "true" : "false" );
 	}
 	std::cout << std::endl;
 
@@ -153,8 +153,8 @@ int main()
 	std::cout << "=== After applying commit_b ===" << std::endl;
 	{
 		commit_b.apply( reg );
-		std::cout << std::format( "transform: x={}, y={}\n", reg.get<transform>( entt ).x, reg.get<transform>( entt ).y );
-		std::cout << std::format( "has 'empty': {}\n", reg.all_of<empty>( entt ) ? "true" : "false" );
+		std::cout << std::format( "transform: x={}, y={}\n", reg.get<transform>( entity ).x, reg.get<transform>( entity ).y );
+		std::cout << std::format( "has 'empty': {}\n", reg.all_of<empty>( entity ) ? "true" : "false" );
 	}
 	std::cout << std::endl;
 }
