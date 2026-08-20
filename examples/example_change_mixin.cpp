@@ -5,6 +5,8 @@
 #include <deque>
 #include <iostream>
 #include <string>
+#include <sstream>
+#include <format>
 
 struct transform {
     float x{};
@@ -12,7 +14,21 @@ struct transform {
 };
 
 std::ostream &operator<<(std::ostream &os, const transform &t) {
-    return os << "(" << t.x << ", " << t.y << ")";
+    return os << '(' << t.x << ", " << t.y << ')';
+}
+
+std::istream &operator>>(std::istream &is, transform &t) {
+    char open{};
+    char comma{};
+    char close{};
+
+    if (is >> open >> t.x >> comma >> t.y >> close;
+        open == '(' && comma == ',' && close == ')') {
+        return is;
+    }
+
+    is.setstate(std::ios::failbit);
+    return is;
 }
 
 template<>
@@ -20,17 +36,21 @@ struct entt::storage_type<transform> {
     using type = enttx::change_mixin<entt::basic_storage<transform>>;
 };
 
-struct text_serializer {
+struct empty {
+};
+
+struct output_text_archive {
+	std::ostringstream oss;
 	template<typename T>
 	void operator()(const T& value) {
-		std::cout << value << std::endl;
+		oss << value << std::endl;
 	}
 
 	void operator()(const std::uint8_t value) {
-		std::cout << (int)value << std::endl;
+		oss << (std::uint32_t)value << std::endl;
 	}
 	void operator()(const entt::entity value) {
-		std::cout << entt::to_integral(value) << std::endl;
+		oss << entt::to_integral(value) << std::endl;
 	}
 
 	template<typename T, typename... Rest>
@@ -40,32 +60,101 @@ struct text_serializer {
 	}
 };
 
+struct input_text_archive {
+	std::istringstream iss;
+	template<typename T>
+	void operator()(T& value) {
+		iss >> value;
+	}
+
+	void operator()(std::uint8_t& value) {
+		std::uint32_t temp;
+		iss >> temp;
+		value = static_cast<std::uint8_t>(temp);
+	}
+
+	void operator()(entt::entity& value) {
+		std::uint32_t temp;
+		iss >> temp;
+		value = entt::entity{ temp };
+	}
+
+	template<typename T, typename... Rest>
+	void operator()(T& value, Rest&... rest) {
+		operator()(value);
+		operator()(rest...);
+	}
+};
+
 int main()
 {
 	entt::registry reg;
+	const auto entt = reg.create();
 
-	const auto entt = reg.create( entt::entity{ 10 } );
-	auto observer = enttx::observe<transform>( reg );
+	enttx::observers observers;
+	observers.emplace_back( enttx::observe<transform>( reg ) );
+	observers.emplace_back( enttx::observe<empty>( reg ) );
 
-	reg.emplace<transform>( entt, 0.f, 0.f );
-	reg.patch<transform>( entt, []( transform& t ) { t.x = 10.f; } );
-	reg.patch<transform>( entt, []( transform& t ) { t.y = 5.f; } );
+	enttx::commit commit_a{}; 
+	{
+		reg.emplace<empty>( entt );
+		reg.emplace<transform>( entt, 0.f, 0.f );
+		reg.patch<transform>( entt, []( transform& t ) { t.x = 10.f; } );
+		reg.patch<transform>( entt, []( transform& t ) { t.y = 5.f; } );
 
-	enttx::commit commit{};
-	observer.collect( commit );
+		for (auto& observer : observers) {
+			observer->collect( commit_a ); 
+		}
+	}
 
-	enttx::entity_remap remap{};
-	remap.map( entt, reg.create() );
+	// Print the current state of the registry (changes made by `commit_a`)
+	std::cout << "=== Commit A ===" << std::endl;
+	{
+		std::cout << std::format( "transform: x={}, y={}\n", reg.get<transform>( entt ).x, reg.get<transform>( entt ).y );
+		std::cout << std::format( "has 'empty': {}\n", reg.all_of<empty>( entt ) ? "true" : "false" );
+	}
+	std::cout << std::endl;
 
-	commit.apply( reg, &remap );
+	// Serialize `commit_a` to a string
+	std::string serialized_commit_a; 
+	{
+		output_text_archive ar{};
 
-	std::cout << "Remapped entity transform: " << reg.get<transform>( remap( entt ) ) << std::endl;
+		enttx::commit_snapshot ser{ commit_a };
+		ser.get<transform>( ar );
+		ser.get<empty>( ar );
 
-	commit.invert().apply( reg, &remap );
+		serialized_commit_a = ar.oss.str();
+	}
 
-	std::cout << "Remapped entity transform: " << reg.any_of<transform>( remap( entt ) ) << std::endl;
+	// Deserialize the serialized `commit_a` into `commit_b`
+	enttx::commit commit_b{}; 
+	{
+		input_text_archive ar{ .iss{ serialized_commit_a } };
 
-	text_serializer ser{};
-	enttx::commit_serializer commit_ser{ commit };
-	commit_ser.get<transform>( ser );
+		// We must `get<>` in the same order as we serialized, otherwise the deserialization will fail.
+		enttx::commit_loader des{ commit_b };
+		des.get<transform>( ar );
+		des.get<empty>( ar );
+	}
+
+	// invert `commit_b` and apply it to the registry, which should undo the changes made by `commit_a`
+	std::cout << "=== After applying inverted commit_b ===" << std::endl;
+	{
+		auto inv_commit_b = commit_b.invert();
+		inv_commit_b.apply( reg );
+
+		std::cout << std::format( "has 'transform': {}\n", reg.all_of<transform>( entt ) ? "true" : "false" );
+		std::cout << std::format( "has 'empty': {}\n", reg.all_of<empty>( entt ) ? "true" : "false" );
+	}
+	std::cout << std::endl;
+
+	// Apply `commit_b` to the registry, which should redo the changes made by `commit_a`
+	std::cout << "=== After applying commit_b ===" << std::endl;
+	{
+		commit_b.apply( reg );
+		std::cout << std::format( "transform: x={}, y={}\n", reg.get<transform>( entt ).x, reg.get<transform>( entt ).y );
+		std::cout << std::format( "has 'empty': {}\n", reg.all_of<empty>( entt ) ? "true" : "false" );
+	}
+	std::cout << std::endl;
 }

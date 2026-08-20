@@ -17,8 +17,6 @@
 #include <algorithm>
 #include <utility>
 #include <span>
-// TODO: Should probably make node_id a guid or something.
-#include <random> // node_id_generator
 
 namespace enttx {
 
