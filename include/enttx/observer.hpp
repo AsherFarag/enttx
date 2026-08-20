@@ -4,10 +4,15 @@
  * @dependencies change_mixin.hpp
  */
 
+// TODO: Not all changes need to be invertible. Implement an api where users can specify if they want the changes to be invertible or not. 
+// For example, if commits are being sent over the network and inversions are not needed,
+// then we can save some memory and bandwidth by not storing the old value for updates and destructs. 
+
 #pragma once
 #include "core.hpp"
 #include "entity_remap.hpp"
 
+#include <entt/core/type_info.hpp>
 #include <entt/entity/fwd.hpp>
 #include <entt/signal/fwd.hpp>
 #include <entt/container/dense_map.hpp>

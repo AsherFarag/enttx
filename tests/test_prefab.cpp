@@ -1,8 +1,9 @@
 #include "doctest/doctest.h"
 
-#include <entt/entity/registry.hpp>
 #include <enttx/prefab.hpp>
 #include <enttx/hierarchy.hpp>
+
+#include <entt/entity/registry.hpp>
 
 #include <algorithm>
 #include <unordered_set>

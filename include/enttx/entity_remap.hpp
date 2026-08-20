@@ -2,7 +2,8 @@
 #include "config.hpp"
 
 #include <entt/fwd.hpp>
-#include <entt/container/dense_map.hpp> // For entt::dense_map used in basic_entity_remap
+#include <entt/entity/entity.hpp>
+#include <entt/container/dense_map.hpp>
 
 #include <concepts>
 
