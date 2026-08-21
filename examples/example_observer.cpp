@@ -1,160 +1,198 @@
+// example_observer.cpp
+//
+// enttx::observer records what happened to a component (constructed, updated,
+// destroyed) and lets you turn that history into a `commit` - a serializable,
+// invertible batch of changes. This example walks through the two things a
+// commit is good for:
+//
+//   1. Undo/redo within a single registry (invert() + apply()).
+//   2. Syncing changes from one registry to another, e.g. server -> client
+//      (commit_snapshot / commit_loader + apply() with an entity remap).
+//
+#include "archive.hpp"
+
 #include <enttx/change_mixin.hpp>
 #include <enttx/observer.hpp>
+#include <enttx/stable_id.hpp>
+
 #include <entt/entity/registry.hpp>
 
-#include <deque>
-#include <iostream>
-#include <string>
-#include <sstream>
 #include <format>
+#include <iostream>
 
+// Define a component type.
 struct transform {
-    float x{};
-    float y{};
+    float x{ 0.f }, y{ 0.f };
 };
 
-std::ostream &operator<<(std::ostream &os, const transform &t) {
-    return os << '(' << t.x << ", " << t.y << ')';
-}
+template<typename Archive>
+void serialize(Archive& ar, transform& t) { ar( t.x, t.y ); }
 
-std::istream &operator>>(std::istream &is, transform &t) {
-    char open{};
-    char comma{};
-    char close{};
-
-    if (is >> open >> t.x >> comma >> t.y >> close;
-        open == '(' && comma == ',' && close == ')') {
-        return is;
-    }
-
-    is.setstate(std::ios::failbit);
-    return is;
-}
-
+// To track invertible changes to a component, you need to make its storage type a
+// change_mixin of the underlying storage. This is done by specializing
+// entt::storage_type for your component type. The change_mixin is an 
+// entt::sigh_mixin with an extra on_pre_update() signal that is emitted before a component is updated. 
 template<>
 struct entt::storage_type<transform> {
     using type = enttx::change_mixin<entt::basic_storage<transform>>;
 };
 
-struct empty {
+struct name {
+    std::string value;
 };
 
-struct output_text_archive {
-	std::ostringstream oss;
-	template<typename T>
-	void operator()(const T& value) {
-		oss << value << std::endl;
-	}
+template<typename Archive>
+void serialize(Archive& ar, name& n) { ar( n.value ); }
 
-	void operator()(const std::uint8_t value) {
-		oss << (std::uint32_t)value << std::endl;
-	}
-	void operator()(const entt::entity value) {
-		oss << entt::to_integral(value) << std::endl;
-	}
-
-	template<typename T, typename... Rest>
-	void operator()(const T& value, const Rest&... rest) {
-		operator()(value);
-		operator()(rest...);
-	}
+template<>
+struct entt::storage_type<name> {
+    using type = enttx::change_mixin<entt::basic_storage<name>>;
 };
 
-struct input_text_archive {
-	std::istringstream iss;
-	template<typename T>
-	void operator()(T& value) {
-		iss >> value;
-	}
+// Empty components (entt::component_traits<T>::page_size == 0) work too.
+struct frozen {};
 
-	void operator()(std::uint8_t& value) {
-		std::uint32_t temp;
-		iss >> temp;
-		value = static_cast<std::uint8_t>(temp);
-	}
-
-	void operator()(entt::entity& value) {
-		std::uint32_t temp;
-		iss >> temp;
-		value = entt::entity{ temp };
-	}
-
-	template<typename T, typename... Rest>
-	void operator()(T& value, Rest&... rest) {
-		operator()(value);
-		operator()(rest...);
-	}
+template<>
+struct entt::storage_type<frozen> {
+    using type = enttx::change_mixin<entt::basic_storage<frozen>>;
 };
 
-int main()
-{
-	entt::registry reg;
-	const auto entity = reg.create();
+void print_state(entt::registry& registry, std::string_view label) {
+    std::cout << "-- " << label << " --\n";
+    registry.view<entt::entity>().each([&](entt::entity e) {
+        std::cout << std::format(
+            "  entity {} with name '{}': {}{}\n",
+            entt::to_integral(e), 
+            registry.any_of<name>(e) ? registry.get<name>(e).value : "<no name>",
+            registry.any_of<transform>(e) 
+                ? std::format("transform({}, {})", registry.get<transform>(e).x, registry.get<transform>(e).y) 
+                : "<no transform>",
+            registry.all_of<frozen>(e) ? ", frozen" : "");
+    });
+}
 
-	enttx::observers observers;
-	observers.emplace_back( enttx::observe<transform>( reg ) );
-	observers.emplace_back( enttx::observe<empty>( reg ) );
+// -----------------------------------------------------------------------------
+// Demo 1: undo, within a single registry.
+//
+// An observer<T> watches one component's storage; collect() drains whatever
+// it saw since the last call into a commit. Because every change knows how to
+// invert itself (construct <-> destroy, old_value <-> new_value), a whole
+// commit can be inverted too - giving you a free undo.
+// -----------------------------------------------------------------------------
+void undo_demo() {
+    std::cout << "=== Undo demo ===\n";
 
-	enttx::commit commit_a{}; 
-	{
-		reg.emplace<empty>( entity );
-		reg.emplace<transform>( entity, 0.f, 0.f );
-		reg.patch<transform>( entity, []( transform& t ) { t.x = 10.f; } );
-		reg.patch<transform>( entity, []( transform& t ) { t.y = 5.f; } );
+    entt::registry registry;
+    entt::entity entity = registry.create();
 
-		for (auto& observer : observers) {
-			observer->collect( commit_a ); 
-		}
-	}
+	// Add a name before the observer is created, so that the observer doesn't see it.
+	// You can also call observer->disconnect() to temporarily stop observing changes, then reconnect() later.
+    registry.emplace<name>( entity, "Player" );
 
-	// Print the current state of the registry (changes made by `commit_a`)
-	std::cout << "=== Commit A ===" << std::endl;
-	{
-		std::cout << std::format( "transform: x={}, y={}\n", reg.get<transform>( entity ).x, reg.get<transform>( entity ).y );
-		std::cout << std::format( "has 'empty': {}\n", reg.all_of<empty>( entity ) ? "true" : "false" );
-	}
-	std::cout << std::endl;
+    enttx::observers observers;
+    observers.emplace_back(enttx::observe<transform>(registry));
+    observers.emplace_back(enttx::observe<name>(registry));
+    observers.emplace_back(enttx::observe<frozen>(registry));
 
-	// Serialize `commit_a` to a string
-	std::string serialized_commit_a; 
-	{
-		output_text_archive ar{};
+    registry.emplace<transform>(entity, 1.f, 2.f);
+    registry.patch<transform>(entity, [](transform& t) { t.x = 5.f; });
+    registry.patch<name>(entity, [](name& n) { n.value = "Hero"; });
+    registry.emplace<frozen>(entity);
 
-		enttx::commit_snapshot ser{ commit_a };
-		ser.get<transform>( ar );
-		ser.get<empty>( ar );
+    print_state(registry, "after edits");
 
-		serialized_commit_a = ar.oss.str();
-	}
+    enttx::commit changes{};
+    for (auto& observer : observers) {
+        observer->collect(changes);
+    }
 
-	// Deserialize the serialized `commit_a` into `commit_b`
-	enttx::commit commit_b{}; 
-	{
-		input_text_archive ar{ .iss{ serialized_commit_a } };
+    enttx::commit undo = changes.invert();
+    undo.apply(registry);
 
-		// We must `get<>` in the same order as we serialized, otherwise the deserialization will fail.
-		enttx::commit_loader des{ commit_b };
-		des.get<transform>( ar );
-		des.get<empty>( ar );
-	}
+    print_state(registry, "after undo");
+    std::cout << '\n';
+}
 
-	// invert `commit_b` and apply it to the registry, which should undo the changes made by `commit_a`
-	std::cout << "=== After applying inverted commit_b ===" << std::endl;
-	{
-		auto inv_commit_b = commit_b.invert();
-		inv_commit_b.apply( reg );
+// -----------------------------------------------------------------------------
+// Demo 2: sync changes from one registry to another over the wire.
+//
+// Server and client entities aren't the same entt::entity - so the commit is
+// serialized with a stable_id in place of the entity, and rebuilt on the
+// client by mapping that id back to a local entity. This is entirely up to
+// the caller: enttx never assumes how entities correspond across registries.
+// -----------------------------------------------------------------------------
+void network_sync_demo() {
+    std::cout << "=== Network sync demo ===\n";
 
-		std::cout << std::format( "has 'transform': {}\n", reg.all_of<transform>( entity ) ? "true" : "false" );
-		std::cout << std::format( "has 'empty': {}\n", reg.all_of<empty>( entity ) ? "true" : "false" );
-	}
-	std::cout << std::endl;
+    using network_id = enttx::basic_stable_id<std::uint64_t, struct network_id_tag>;
+    const network_id player_id{ 42 };
 
-	// Apply `commit_b` to the registry, which should redo the changes made by `commit_a`
-	std::cout << "=== After applying commit_b ===" << std::endl;
-	{
-		commit_b.apply( reg );
-		std::cout << std::format( "transform: x={}, y={}\n", reg.get<transform>( entity ).x, reg.get<transform>( entity ).y );
-		std::cout << std::format( "has 'empty': {}\n", reg.all_of<empty>( entity ) ? "true" : "false" );
-	}
-	std::cout << std::endl;
+    std::string wire_data;
+
+    // --- Server: make some changes, then serialize a commit describing them.
+    {
+        entt::registry server;
+        entt::entity entity = server.create();
+        server.emplace<network_id>(entity, player_id);
+
+        enttx::observers observers;
+        observers.emplace_back(enttx::observe<transform>(server));
+        observers.emplace_back(enttx::observe<name>(server));
+
+        server.emplace<transform>(entity, 1.f, 2.f);
+        server.patch<transform>(entity, [](transform& t) { t.x = 3.f; });
+        server.emplace<name>(entity, "Player");
+
+        enttx::commit changes{};
+        for (auto& observer : observers) {
+            observer->collect(changes);
+        }
+
+        // The entity_handler here is what maps server entities to something
+        // the client can understand: its stable network_id.
+        output_archive ar{};
+
+        const auto entity_handler = [&](entt::entity e) {
+            return server.get<network_id>(e).value;
+        };
+
+        enttx::commit_snapshot{ changes }
+            .get<transform>(ar, entity_handler)
+            .get<name>(ar, entity_handler);
+
+        wire_data = ar.stream.str();
+    }
+
+    // --- Client: already has its own entity for player_id; apply the commit
+    //     by mapping the incoming network_id back to that local entity.
+    {
+        entt::registry client;
+        entt::entity entity = client.create();
+        client.emplace<network_id>(entity, player_id);
+
+        std::unordered_map<network_id, entt::entity> id_to_entity{ { player_id, entity } };
+
+        enttx::commit changes{};
+        {
+            input_archive ar{ wire_data };
+
+            const auto entity_handler = [&](input_archive& ar) {
+                network_id id{};
+                ar(id.value);
+                return id_to_entity.at(id);
+            };
+
+            enttx::commit_loader{ changes }
+                .get<transform>(ar, entity_handler)
+                .get<name>(ar, entity_handler);
+        }
+
+        changes.apply(client);
+        print_state(client, "client after applying server commit");
+    }
+}
+
+int main() {
+    undo_demo();
+    network_sync_demo();
 }
