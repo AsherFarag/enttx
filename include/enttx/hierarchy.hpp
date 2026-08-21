@@ -39,6 +39,17 @@ struct hierarchy_config {
     bool enable_events{true};
 };
 
+template<typename, hierarchy_config = hierarchy_config{}, typename = void>
+class basic_hierarchy;
+
+/*! @brief Alias declaration for the most common use case. */
+using hierarchy = basic_hierarchy<entt::registry, 
+                                hierarchy_config{ 
+                                    .deletion_policy = hierarchy_deletion_policy::destroy_children, 
+                                    .enable_events = true 
+                                },
+                                struct default_hierarchy_tag>;
+
 namespace internal {
 
 /*! @brief Forward iterator over children, following the `Next` sibling pointer. */
@@ -137,8 +148,8 @@ struct basic_children_view {
  */
 template<
     typename Registry, 
-    hierarchy_config Config = hierarchy_config{},
-    typename Tag = void>
+    hierarchy_config Config,
+    typename Tag>
 struct basic_hierarchy {
 private:
     using traits_type = entt::entt_traits<typename Registry::entity_type>;
@@ -606,10 +617,5 @@ protected:
         ph.child_count++;
     }
 };
-
-/*! @brief Alias declaration for the most common use case. */
-using hierarchy = basic_hierarchy<entt::registry, 
-                                  hierarchy_config{ .deletion_policy = hierarchy_deletion_policy::destroy_children, .enable_events = true },
-                                  struct default_hierarchy_tag>;
 
 } // namespace enttx

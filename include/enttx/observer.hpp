@@ -31,26 +31,31 @@ struct change;
 template<typename Registry>
 class basic_observer_base;
 
-using observer_base = basic_observer_base<entt::registry>;
-
 template<typename Registry>
 using basic_observers = std::vector<std::unique_ptr<basic_observer_base<Registry>>>;
-
-using observers = basic_observers<entt::registry>;
 
 template<typename>
 class basic_commit;
 
-using commit = basic_commit<entt::registry>;
-
 template<typename Commit>
 class basic_commit_snapshot;
-
-using commit_snapshot = basic_commit_snapshot<commit>;
 
 template<typename Commit>
 class basic_commit_loader;
 
+/*! @brief Alias declaration for the most common use case. */
+using observer_base = basic_observer_base<entt::registry>;
+
+/*! @brief Alias declaration for the most common use case. */
+using observers = basic_observers<entt::registry>;
+
+/*! @brief Alias declaration for the most common use case. */
+using commit = basic_commit<entt::registry>;
+
+/*! @brief Alias declaration for the most common use case. */
+using commit_snapshot = basic_commit_snapshot<commit>;
+
+/*! @brief Alias declaration for the most common use case. */
 using commit_loader = basic_commit_loader<commit>;
 
 /*!
@@ -142,6 +147,7 @@ struct change {
     }
 };
 
+/*! @brief Specialization of `change` for pageless components, which do not have a value associated with them. */
 template<typename T, typename Entity>
 requires is_pageless<T, Entity>
 struct change<T, Entity> {
@@ -159,7 +165,7 @@ struct change<T, Entity> {
 
     [[nodiscard]] change invert() const {
 		change inverted;
-        inverted.entity = this->entity;
+        inverted.entity = entity;
         if (std::holds_alternative<construct>(payload)) {
             inverted.payload = destruct{};
         } else /*if destruct*/ {
@@ -179,6 +185,10 @@ struct change<T, Entity> {
     }
 };
 
+/*!
+ * @brief Represents a collection of changes (a commit) that can be applied to a registry.
+ * @tparam Registry Type of the registry to which the commit can be applied.
+ */
 template<typename Registry>
 class basic_commit {
 private:
@@ -195,8 +205,8 @@ public:
 
     using entity_remap_type = basic_entity_remap<entity_type, entity_type>;
 
-	[[nodiscard]]
-    basic_commit invert() const {
+    /*! @brief Inverts the commit, producing a new commit that can undo the changes of this commit. */
+	[[nodiscard]] basic_commit invert() const {
         basic_commit inverted;
         for (const auto& [storage_id, segment] : segments) {
             inverted.segments[storage_id] = segment->invert();
@@ -204,6 +214,13 @@ public:
         return inverted;
     }
 
+    /*! 
+     * @brief Applies the commit to the given registry.
+     * @param registry The registry to which the commit will be applied.
+     * @param remap Optional pointer to an entity remap that can be used to remap entities during the application of the commit.
+     * @remark If a remap is provided, entities in the commit will be remapped according to the remap before being applied to the registry.
+     *         If no remap is provided, entities will be applied as-is.
+     */
     void apply(Registry& registry, const entity_remap_type* remap = nullptr) const {
         for (const auto& [storage_id, segment] : segments) {
             segment->apply(registry, storage_id, remap);
@@ -259,10 +276,15 @@ private:
     entt::dense_map<entt::id_type, std::unique_ptr<segment_base>> segments;
 };
 
+/*!
+ * @brief
+ */
 template<typename Commit>
 class basic_commit_snapshot {
 public:
     using commit_type = Commit;
+
+    using entity_type = typename commit_type::entity_type;
 
     basic_commit_snapshot(const commit_type& commit) noexcept
         : commit{&commit} {}
@@ -277,8 +299,23 @@ public:
 
     basic_commit_snapshot& operator=(basic_commit_snapshot&&) noexcept = default;
 
-    template<typename T, typename Archive>
-    const basic_commit_snapshot& get(Archive& archive, const entt::id_type storage_id = entt::type_hash<T>::value()) const {
+    /*!
+     * @brief Serializes the changes for a specific component type.
+     *
+     * @tparam T The component type.
+     * @tparam Archive The archive type.
+     * @tparam EntityHandler A callable that maps entities to a serializable form. E.g., entt::entity -> network_id.
+     * @param archive The archive to serialize to.
+     * @param entity_handler The entity handler callable.
+     * @param storage_id The storage identifier, defaults to the type hash of T.
+     * @return A const reference to this snapshot.
+     * 
+     * @remark The entity_handler is expected to be a callable that takes an entity of type `entity_type` 
+     *         and returns a serializable representation, which can be anything, even just the entity itself.
+     *         But it must produce a value the load-side can use to remap the entity back to the correct entity in the registry.
+     */
+    template<typename T, typename Archive, std::invocable<entity_type> EntityHandler>
+    const basic_commit_snapshot& get(Archive& archive, EntityHandler&& entity_handler, const entt::id_type storage_id = entt::type_hash<T>::value()) const {
         using segment_type = typename commit_type::template segment<T>;
         const auto it = commit->segments.find(storage_id);
 
@@ -292,8 +329,8 @@ public:
 
         for (const auto& change : changes) {
             using change_type = std::decay_t<decltype(change)>;
-            using entity_type = typename change_type::entity_type;
-            archive(change.entity); // TODO: We should use a remapper here. For example, mapping the entt::entity to a network_id etc.
+            
+            archive(entity_handler(change.entity));
             archive(static_cast<std::uint8_t>(change.payload.index()));
 
             if constexpr(!is_pageless<T, entity_type>) {
@@ -310,6 +347,11 @@ public:
         return *this;
     }
 
+    template<typename T, typename Archive>
+    const basic_commit_snapshot& get(Archive& archive, const entt::id_type storage_id = entt::type_hash<T>::value()) const {
+        return get<T>(archive, [](const entity_type entity) { return entity; }, storage_id);
+    }
+
 private:
     const commit_type* commit;
 };
@@ -317,10 +359,15 @@ private:
 template<typename Commit>
 basic_commit_snapshot(const Commit& commit) -> basic_commit_snapshot<Commit>;
 
+/*!
+ * @brief
+ */
 template<typename Commit>
 struct basic_commit_loader {
 public:
     using commit_type = Commit;
+
+    using entity_type = typename commit_type::entity_type;
 
     basic_commit_loader(commit_type& commit) noexcept
         : commit{&commit} {}
@@ -335,9 +382,12 @@ public:
 
     basic_commit_loader& operator=(basic_commit_loader&&) noexcept = default;
 
-    template<typename T, typename Archive>
-    const basic_commit_loader& get(Archive& archive, const entt::id_type storage_id = entt::type_hash<T>::value()) const {
-        using entity_type = typename commit_type::entity_type;
+    /*!
+     * @brief Deserializes the changes for a specific component type.
+     */
+    template<typename T, typename Archive, typename EntityHandler> 
+    requires (std::is_invocable_r_v<typename commit_type::entity_type, EntityHandler, Archive&>)
+    const basic_commit_loader& get(Archive& archive, EntityHandler&& entity_handler, const entt::id_type storage_id = entt::type_hash<T>::value()) const {
         using change_type = change<T, entity_type>;
 
         std::size_t size{};
@@ -351,8 +401,7 @@ public:
         changes.reserve(size);
 
         for (std::size_t i = 0; i < size; ++i) {
-            entity_type entity{};
-            archive(entity);
+            entity_type entity = entity_handler(archive);
 
             std::uint8_t index{};
             archive(index);
@@ -407,6 +456,16 @@ public:
         return *this;
     }
 
+    template<typename T, typename Archive>
+    const basic_commit_loader& get(Archive& archive, const entt::id_type storage_id = entt::type_hash<T>::value()) const {
+        return get<T>(archive, [](Archive& archive) {
+            using entity_type = typename commit_type::entity_type;
+            entity_type entity{};
+            archive(entity);
+            return entity;
+        }, storage_id);
+    }
+
 private:
     commit_type* commit;
 };
@@ -434,19 +493,19 @@ concept is_change_observer_storage = requires (Storage& s) {
 );
 
 /*! @brief Tracks changes to components of type `T` within the given `Registry`. */
-template<is_change_observer_storage Storage, typename Allocator = std::allocator<change<typename Storage::value_type, typename Storage::entity_type>>>
+template<is_change_observer_storage Storage, typename Allocator = std::allocator<change<typename Storage::element_type, typename Storage::entity_type>>>
 class basic_observer final: public basic_observer_base<typename Storage::registry_type> {
 public:
     /*! @brief Storage for the component type being observed. */
     using storage_type = Storage;
     /*! @brief Underlying entity identifier. */
     using entity_type = typename storage_type::entity_type;
-    /*! @brief Value type of the component being observed. */
-    using value_type = typename storage_type::value_type;
+    /*! @brief Type of the component being observed. */
+    using element_type = typename storage_type::element_type;
     /*! @brief Allocator type for the changes vector. */
     using allocator_type = Allocator;
     /*! @brief Type of the change being tracked. */
-    using change_type = change<value_type, entity_type>;
+    using change_type = change<element_type, entity_type>;
     /*! @brief Container for the changes being tracked. */
     using change_list_type = std::vector<change_type, allocator_type>;
     /*! @brief Base type for commits. */
@@ -467,7 +526,7 @@ public:
 
     void connect() override {
         storage.on_construct().template connect<&basic_observer::on_construct>(*this);
-        if constexpr(!is_pageless<value_type, entity_type>) {
+        if constexpr(!is_pageless<element_type, entity_type>) {
             storage.on_pre_update().template connect<&basic_observer::on_pre_update>(*this);
             storage.on_update().template connect<&basic_observer::on_update>(*this);
         }
@@ -476,7 +535,7 @@ public:
 
     void disconnect() override {
         storage.on_construct().template disconnect<&basic_observer::on_construct>(*this);
-        if constexpr(!is_pageless<value_type, entity_type>) {
+        if constexpr(!is_pageless<element_type, entity_type>) {
             storage.on_pre_update().template disconnect<&basic_observer::on_pre_update>(*this);
             storage.on_update().template disconnect<&basic_observer::on_update>(*this);
         }
@@ -486,29 +545,29 @@ public:
     void collect(commit_base_type& commit) override {
         // TODO: Add an option to flatten changes into a single net change for networking?
         if (!changes.empty()) {
-            commit.template append_segment<value_type>(std::move(changes), storage_id);
+            commit.template append_segment<element_type>(std::move(changes), storage_id);
             changes.clear();
         }
     }
 
 private:
     // TODO: See comment in on_update 
-    std::optional<std::conditional_t<!is_pageless<value_type, entity_type>, value_type, std::monostate>> pre_update_value;
+    std::optional<std::conditional_t<!is_pageless<element_type, entity_type>, element_type, std::monostate>> pre_update_value;
 
     void on_construct(const entity_type entity) {
-        if constexpr(is_pageless<value_type, entity_type>) {
+        if constexpr(is_pageless<element_type, entity_type>) {
             changes.emplace_back(entity, typename change_type::construct{});
         } else {
             changes.emplace_back(entity, typename change_type::construct{storage.get(entity)});
         }
     }
 
-    void on_pre_update(const entity_type entity) requires(!is_pageless<value_type, entity_type>) {
+    void on_pre_update(const entity_type entity) requires(!is_pageless<element_type, entity_type>) {
         ENTTX_ASSERT(!pre_update_value.has_value(), "Pre-update value already set for entity");
         pre_update_value = storage.get(entity);
     }
 
-    void on_update(const entity_type entity) requires(!is_pageless<value_type, entity_type>) {
+    void on_update(const entity_type entity) requires(!is_pageless<element_type, entity_type>) {
         // TODO: Figure out if this is safe and the right way to do it.
         // Need to check if its legal that patch cannot modify the registry in a way that would invalidate this.
         changes.emplace_back(entity, typename change_type::update{std::move(pre_update_value).value(), storage.get(entity)});
@@ -516,7 +575,7 @@ private:
     }
 
     void on_destroy(const entity_type entity) {
-        if constexpr(is_pageless<value_type, entity_type>) {
+        if constexpr(is_pageless<element_type, entity_type>) {
             changes.emplace_back(entity, typename change_type::destruct{});
         } else {
             changes.emplace_back(entity, typename change_type::destruct{storage.get(entity)});
