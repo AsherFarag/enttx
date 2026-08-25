@@ -95,7 +95,7 @@ struct basic_stable_id<Value, Tag, ValueTraits> {
  */
 template<typename StableId>
 requires requires(typename StableId::value_type v) {
-    { typename StableId::value_traits::next(v) } -> std::same_as<typename StableId::value_type>;
+    { StableId::value_traits::next(v) } -> std::same_as<typename StableId::value_type>;
 }
 struct basic_monotonic_stable_id_generator<StableId> {
     /*! @brief Underlying value type of the stable identifier. */
