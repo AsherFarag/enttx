@@ -227,8 +227,8 @@ public:
     }
 
     // TODO: This API is a hacky and not user friendly.
-    template<typename T>
-    void append_segment(std::vector<change<T, entity_type>>&& changes, const entt::id_type storage_id = entt::type_hash<T>::value()) {
+    template<typename T, typename Allocator>
+    void append_segment(std::vector<change<T, entity_type>, Allocator>&& changes, const entt::id_type storage_id = entt::type_hash<T>::value()) {
         if (const auto it = segments.find(storage_id); it != segments.end()) {
             auto& existing = static_cast<segment<T>&>(*it->second).changes;
             existing.insert(existing.end(), std::make_move_iterator(changes.begin()), std::make_move_iterator(changes.end()));
