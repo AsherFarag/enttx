@@ -13,6 +13,7 @@ add_executable(EnTTxTests
     test_observer.cpp
     test_hierarchy.cpp
     test_prefab.cpp
+    test_stable_id.cpp
 )
 
 target_link_libraries(EnTTxTests

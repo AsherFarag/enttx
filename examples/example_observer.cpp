@@ -19,6 +19,7 @@
 
 #include <format>
 #include <iostream>
+#include <unordered_map>
 
 // Define a component type.
 struct transform {

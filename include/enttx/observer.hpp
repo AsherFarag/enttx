@@ -1,7 +1,6 @@
 /*!
  * @file observer.hpp
  * @brief Observer utility for enttx.
- * @dependencies change_mixin.hpp
  */
 
 // TODO: Not all changes need to be invertible. Implement an api where users can specify if they want the changes to be invertible or not. 
@@ -227,8 +226,14 @@ public:
         }
     }
 
+    // TODO: This API is a hacky and not user friendly.
     template<typename T>
     void append_segment(std::vector<change<T, entity_type>>&& changes, const entt::id_type storage_id = entt::type_hash<T>::value()) {
+        if (const auto it = segments.find(storage_id); it != segments.end()) {
+            auto& existing = static_cast<segment<T>&>(*it->second).changes;
+            existing.insert(existing.end(), std::make_move_iterator(changes.begin()), std::make_move_iterator(changes.end()));
+            return;
+        }
         auto s = std::make_unique<segment<T>>();
         s->changes = std::move(changes);
         segments[storage_id] = std::move(s);
@@ -277,26 +282,45 @@ private:
 };
 
 /*!
- * @brief
+ * @brief Utility class to serialize a commit into an archive, with optional entity remapping.
+ * @tparam Commit Type of the commit to be serialized.
  */
 template<typename Commit>
 class basic_commit_snapshot {
-public:
-    using commit_type = Commit;
+    static_assert(!std::is_const_v<Commit>, "Non-const commit type required");
 
+public:
+    /*! @brief Basic commit type. */
+    using commit_type = Commit;
+    /*! @brief Underlying entity identifier. */
     using entity_type = typename commit_type::entity_type;
 
+    /*!
+     * @brief Constructs an instance that is bound to a given commit.
+     * @param commit A valid reference to a commit.
+     */
     basic_commit_snapshot(const commit_type& commit) noexcept
         : commit{&commit} {}
 
+    /*! @brief Default copy constructor, deleted on purpose. */
     basic_commit_snapshot(const basic_commit_snapshot&) = delete;
 
+    /*! @brief Default move constructor. */
     basic_commit_snapshot(basic_commit_snapshot&&) noexcept = default;
 
+    /*! @brief Default destructor. */
     ~basic_commit_snapshot() = default;
 
+    /**
+     * @brief Default copy assignment operator, deleted on purpose.
+     * @return This snapshot.
+     */
     basic_commit_snapshot& operator=(const basic_commit_snapshot&) = delete;
 
+    /**
+     * @brief Default move assignment operator.
+     * @return This snapshot.
+     */
     basic_commit_snapshot& operator=(basic_commit_snapshot&&) noexcept = default;
 
     /*!
@@ -360,30 +384,55 @@ template<typename Commit>
 basic_commit_snapshot(const Commit& commit) -> basic_commit_snapshot<Commit>;
 
 /*!
- * @brief
+ * @brief Utility class to deserialize a commit from an archive, with optional entity remapping.
+ * @tparam Commit Type of the commit to be deserialized.
  */
 template<typename Commit>
 struct basic_commit_loader {
 public:
+    /*! @brief Basic commit type. */
     using commit_type = Commit;
-
+    /*! @brief Underlying entity identifier. */
     using entity_type = typename commit_type::entity_type;
 
+
+    /*!
+     * @brief Constructs an instance that is bound to a given commit.
+     * @param commit A valid reference to a commit.
+     */
     basic_commit_loader(commit_type& commit) noexcept
         : commit{&commit} {}
 
+    /*! @brief Default copy constructor, deleted on purpose. */
     basic_commit_loader(const basic_commit_loader&) = delete;
 
+    /*! @brief Default move constructor. */
     basic_commit_loader(basic_commit_loader&&) noexcept = default;
 
+    /*! @brief Default destructor. */
     ~basic_commit_loader() = default;
 
+    /**
+     * @brief Default copy assignment operator, deleted on purpose.
+     * @return This loader.
+     */
     basic_commit_loader& operator=(const basic_commit_loader&) = delete;
 
+    /**
+     * @brief Default move assignment operator.
+     * @return This loader.
+     */
     basic_commit_loader& operator=(basic_commit_loader&&) noexcept = default;
 
     /*!
      * @brief Deserializes the changes for a specific component type.
+     * @tparam T Component type.
+     * @tparam Archive Archive type.
+     * @tparam EntityHandler Callable type to handle entity remapping.
+     * @param archive Archive to deserialize from.
+     * @param entity_handler Callable to handle entity remapping.
+     * @param storage_id Optional storage identifier.
+     * @return This loader.
      */
     template<typename T, typename Archive, typename EntityHandler> 
     requires (std::is_invocable_r_v<typename commit_type::entity_type, EntityHandler, Archive&>)
@@ -435,6 +484,7 @@ public:
             case 2: {
                 if constexpr(is_pageless<T, entity_type>) {
                     ENTTX_ASSERT(false, "update_change encountered for pageless type during deserialization");
+                    return *this;
                 } else {
                     using update_change = typename change_type::update;
                     T old_value{}, new_value{};
@@ -445,7 +495,7 @@ public:
             }
             default:
                 ENTTX_ASSERT(false, "Unknown change payload index during deserialization");
-                break;
+                return *this;
             }
 
             changes.push_back(change_type{entity, std::move(payload)});
@@ -456,10 +506,17 @@ public:
         return *this;
     }
 
+    /*!
+    * @brief Deserializes the changes for a specific component type, using the default entity handler that returns the entity as-is.
+    * @tparam T Component type.
+    * @tparam Archive Archive type.
+    * @param archive Archive to deserialize from.
+    * @param storage_id Optional storage identifier.
+    * @return This loader.
+     */
     template<typename T, typename Archive>
     const basic_commit_loader& get(Archive& archive, const entt::id_type storage_id = entt::type_hash<T>::value()) const {
         return get<T>(archive, [](Archive& archive) {
-            using entity_type = typename commit_type::entity_type;
             entity_type entity{};
             archive(entity);
             return entity;
@@ -552,7 +609,10 @@ public:
 
 private:
     // TODO: See comment in on_update 
-    std::optional<std::conditional_t<!is_pageless<element_type, entity_type>, element_type, std::monostate>> pre_update_value;
+    [[no_unique_address]]
+    std::conditional_t<!is_pageless<element_type, entity_type>, 
+        std::optional<element_type>, 
+        std::monostate> pre_update_value;
 
     void on_construct(const entity_type entity) {
         if constexpr(is_pageless<element_type, entity_type>) {
@@ -584,6 +644,14 @@ private:
 };
 } // namespace internal
 
+/*!
+ * @brief Creates an observer for a specific component type.
+ * @tparam T Component type.
+ * @tparam Registry Registry type.
+ * @param registry Registry to observe.
+ * @param storage_id Optional storage identifier.
+ * @return A unique pointer to the created observer.
+ */
 template<typename T, typename Registry>
 [[nodiscard]] std::unique_ptr<basic_observer_base<Registry>> 
 observe(Registry& registry, entt::id_type storage_id = entt::type_hash<T>::value()) {
