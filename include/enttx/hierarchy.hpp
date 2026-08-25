@@ -1,13 +1,22 @@
+/*!
+ * @file hierarchy.hpp
+ * @brief Adds a customisable entity hierarchy component, it is allocation-free 
+ *        and allows for O(1) operations like a double-linked list, 
+ *        while also allowing for cache-friendly iteration over the 
+ *        children of a parent entity.
+ */
+
 #pragma once
+#include "config.hpp"
+#include "entity_remap.hpp"
+
 #include <entt/entity/entity.hpp>
 #include <entt/entity/fwd.hpp>
 #include <entt/signal/sigh.hpp>
+
 #include <cstdint>
 #include <concepts>
 #include <functional>
-
-#include "config.hpp"
-#include "entity_remap.hpp"
 
 namespace enttx {
 
@@ -25,9 +34,21 @@ enum class hierarchy_deletion_policy : std::uint8_t {
 struct hierarchy_config {
     /*! @brief Deletion policy for handling hierarchy relationships on destruction. */
     hierarchy_deletion_policy deletion_policy{hierarchy_deletion_policy::destroy_children};
-    /*! @brief Whether to enable events for hierarchy changes. Set to false to avoid the overhead of event publishing if you don't need it. */
+    /*! @brief Whether to enable events for hierarchy changes. 
+               Set to false to avoid the overhead of event publishing if you don't need it. */
     bool enable_events{true};
 };
+
+template<typename, hierarchy_config = hierarchy_config{}, typename = void>
+class basic_hierarchy;
+
+/*! @brief Alias declaration for the most common use case. */
+using hierarchy = basic_hierarchy<entt::registry, 
+                                hierarchy_config{ 
+                                    .deletion_policy = hierarchy_deletion_policy::destroy_children, 
+                                    .enable_events = true 
+                                },
+                                struct default_hierarchy_tag>;
 
 namespace internal {
 
@@ -123,18 +144,18 @@ struct basic_children_view {
  * 
  * @tparam Registry Basic registry type.
  * @tparam Config Deletion policy and event-enablement configuration for the hierarchy.
- * @tparam _ Tag to distinguish different hierarchies in the same registry.
+ * @tparam Tag Type to distinguish different hierarchies in the same registry.
  */
 template<
     typename Registry, 
-    hierarchy_config Config = hierarchy_config{},
-    typename = void>
+    hierarchy_config Config,
+    typename Tag>
 struct basic_hierarchy {
 private:
     using traits_type = entt::entt_traits<typename Registry::entity_type>;
 
 public:
-    /*! @brief Type of registry accepted by the handle. */
+    /*! @brief Type of registry */ 
     using registry_type = Registry;
     /*! @brief Underlying entity identifier. */
     using entity_type = typename traits_type::value_type;
@@ -142,6 +163,8 @@ public:
     using version_type = typename traits_type::version_type;
     /*! @brief Unsigned integer type. */
     using size_type = std::uint32_t;
+    /*! @brief Tag type to distinguish different hierarchies in the same registry. */
+    using tag_type = Tag;
     /*! @brief Configuration for the hierarchy. */
     static constexpr hierarchy_config config{ Config };
     /*! @brief Deletion policy for handling hierarchy relationships on destruction. */
@@ -594,10 +617,5 @@ protected:
         ph.child_count++;
     }
 };
-
-/*! @brief Alias declaration for the most common use case. */
-using hierarchy = basic_hierarchy<entt::registry, 
-                                  hierarchy_config{ .deletion_policy = hierarchy_deletion_policy::destroy_children, .enable_events = true },
-                                  struct default_hierarchy_tag>;
 
 } // namespace enttx

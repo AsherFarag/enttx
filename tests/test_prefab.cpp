@@ -1,8 +1,9 @@
 #include "doctest/doctest.h"
 
-#include <entt/entity/registry.hpp>
 #include <enttx/prefab.hpp>
 #include <enttx/hierarchy.hpp>
+
+#include <entt/entity/registry.hpp>
 
 #include <algorithm>
 #include <unordered_set>
@@ -682,8 +683,10 @@ TEST_CASE("introspection: get_node_entity returns entt::null for a node never au
     fixture f;
     const prefab_id id = 1;
     const node_id root = f.reg.create_prefab(id);
-    node_id_generator gen;
-    const node_id unrelated = gen();
+
+    static_assert(std::is_same_v<node_id_generator, basic_monotonic_stable_id_generator<node_id>>,
+				  "This test assumes node_id is a monotonic stable id generator, so we can predict the next id value." );
+	const node_id unrelated = node_id{ 2 }; // never created in this prefab
 
     CHECK(f.reg.get_node_entity(id, unrelated) == entt::null);
     CHECK(f.reg.get_node_entity(id, root) != entt::null);

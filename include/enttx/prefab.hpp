@@ -1,17 +1,22 @@
+/*!
+ * @file prefab.hpp
+ * @brief TODO
+ */
+
 #pragma once
+#include "core.hpp"
+#include "entity_remap.hpp"
+#include "hierarchy.hpp"
+#include "stable_id.hpp"
+
 #include <entt/entity/registry.hpp>
 #include <entt/core/type_info.hpp>
+
 #include <unordered_set>
 #include <vector>
 #include <algorithm>
 #include <utility>
 #include <span>
-// TODO: Should probably make node_id a guid or something.
-#include <random> // node_id_generator
-
-#include "config.hpp"
-#include "entity_remap.hpp"
-#include "hierarchy.hpp"
 
 namespace enttx {
 
@@ -27,51 +32,10 @@ using prefab_id = entt::id_type;
  * This is what allows derived prefabs to target a specific inherited node
  * for overrides.
  */
-struct node_id {
-    std::uint64_t value{0};
-
-    constexpr node_id() = default;
-    constexpr node_id(entt::null_t) : value{0} {}
-    constexpr explicit node_id(std::uint64_t v) : value{v} {}
-
-    constexpr node_id& operator=(entt::null_t) {
-        value = 0;
-        return *this;
-    }
-
-    constexpr auto operator<=>(const node_id&) const = default;
-};
-
-inline constexpr bool operator==(const node_id& lhs, entt::null_t) { return lhs == node_id{}; }
-inline constexpr bool operator==(entt::null_t, const node_id& rhs) { return node_id{} == rhs; }
+using node_id = basic_stable_id<std::uint32_t, struct node_id_tag>;
 
 /*! @brief Generates unique identifiers for nodes in the prefab system. */
-class node_id_generator {
-public:
-    [[nodiscard]] node_id operator()() {
-        std::uint64_t id;
-
-        do {
-            id = dist_(engine_);
-        } while(id == node_id{}.value);
-
-        return node_id{id};
-    }
-private:
-    std::mt19937_64 engine_{std::random_device{}()};
-    std::uniform_int_distribution<std::uint64_t> dist_;
-};
-
-} // namespace enttx
-
-template<>
-struct std::hash<enttx::node_id> {
-    std::size_t operator()(const enttx::node_id& id) const noexcept {
-        return std::hash<std::uint64_t>{}(id.value);
-    }
-};
-
-namespace enttx {
+using node_id_generator = basic_monotonic_stable_id_generator<node_id>;
 
 /*! @brief Provides component operations for a specific component type */
 template<typename Registry>
@@ -88,7 +52,7 @@ public:
 
     using copy_fn   = void(const registry_type&, entity_type, registry_type&, entity_type);
     using remove_fn = void(registry_type&, entity_type);
-    using remap_fn  = void(registry_type&, entity_type, const basic_entity_remap<registry_type>&);
+    using remap_fn  = void(registry_type&, entity_type, const basic_entity_remap<entity_type>&);
 
 	/*! @brief Deep copy operation for this component type from one registry/entity to another. */
     copy_fn   &copy;
@@ -104,12 +68,10 @@ static basic_component_ops<Registry> get_component_ops() {
     using registry_type    = Registry;
     using component_ops    = basic_component_ops<registry_type>;
     using entity_type      = typename component_ops::entity_type;
-    using entity_remap     = basic_entity_remap<registry_type>;
-    using component_traits = entt::component_traits<T, entity_type>;
+    using entity_remap     = basic_entity_remap<entity_type>;
 
     static auto copy = +[](const registry_type& src, entity_type se, registry_type& dst, entity_type de) {
-        // EnTT optimises away empty components, so handle them specially to avoid calling get<T> on a non-existent component.
-        if constexpr (component_traits::page_size == 0u) {
+        if constexpr(is_pageless<T, entity_type>) {
             dst.template emplace_or_replace<T>(de);
         } else {
             dst.template emplace_or_replace<T>(de, src.template get<T>(se));
@@ -200,7 +162,7 @@ public:
     /*! @brief Underlying version type. */
     using version_type = typename traits_type::version_type;
     /*! @brief Entity remap table used to fix up entity-valued components on instantiate. */
-    using entity_remap_type = basic_entity_remap<registry_type>;
+    using entity_remap_type = basic_entity_remap<entity_type>;
     /*! @brief Component copy/remove/remap operation table. */
     using component_ops_type = basic_component_ops<registry_type>;
     /*! @brief Hierarchy type populated on instantiated entities */

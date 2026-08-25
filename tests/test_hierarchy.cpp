@@ -1,8 +1,9 @@
 #include "doctest/doctest.h"
 
-#include <entt/entt.hpp>
 #include <enttx/hierarchy.hpp>
 #include <enttx/entity_remap.hpp>
+
+#include <entt/entt.hpp>
 
 #include <vector>
 #include <algorithm>

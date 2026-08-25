@@ -1,0 +1,7 @@
+@echo off
+
+cd /d "%~dp0.."
+
+cmake -S . -B build -DENTTX_BUILD_TESTING=ON -DENTTX_BUILD_EXAMPLES=ON -DENTTX_ENABLE_CLANG_TIDY=ON
+
+exit /b %ERRORLEVEL%
