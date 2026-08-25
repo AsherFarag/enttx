@@ -165,6 +165,10 @@ Contributions are welcome!
 * Keep code consistent with the existing style (EnTT)
 * Add and ensure tests (if applicable) pass
 
+## Acknowledgements
+
+Thanks to [Placeblock](https://codeberg.org/Placeblock) for design inspiration for the `observer` system. [Website](https://codelix.de/)
+
 ## License
 
 EnTTx is licensed under the **MIT License** - see the [LICENSE](https://github.com/AsherFarag/enttx/blob/main/LICENSE) file for details.
