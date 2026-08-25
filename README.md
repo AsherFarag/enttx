@@ -22,6 +22,9 @@ EnTT provides a powerful low-level ECS foundation, but many games require higher
 - Unity-style Prefabs
 - Delta-based prefab serialization
 - Header-only integration with EnTT
+- Entity reference remapping
+- Simple and customisable Stable identifiers
+- Observer system that tracks changes to a registry, producing invertible commits
 
 ## Requirements
 
@@ -40,7 +43,8 @@ Since EnTTx is header-only, copy the contents of `include/enttx` into your proje
 | CMake option | Default |
 |---|---|
 | `ENTTX_BUILD_EXAMPLES` | OFF
-| `ENTTX_BUILD_TESTS` | OFF
+| `ENTTX_BUILD_TESTING` | OFF
+| `ENTTX_ENABLE_CLANG_TIDY` | OFF
 
 ```bash
 git clone https://github.com/AsherFarag/enttx.git
@@ -113,6 +117,37 @@ Goblin Chief (inherits Goblin)
 - **Prefab introspection:** Query relationships with `is_a()`, `get_base()`, and `derived()`.
 - **Detach instances:** Use `unpack()` to remove prefab tracking and turn an instance into an independent entity hierarchy.
 - **EnTT native:** Built on top of `entt::registry` and works with normal EnTT components.
+
+### Observers `observer.hpp`
+
+```cpp
+struct transform {
+  float x{0.f}, y{0.f};
+};
+
+template <> struct entt::storage_type<transform> {
+  using type = enttx::change_mixin<entt::basic_storage<transform>>;
+};
+
+void undo_demo() {
+  entt::registry registry;
+  entt::entity entity = registry.create();
+
+  auto observer = enttx::observe<transform>(registry);
+
+  registry.emplace<transform>(entity, 1.f, 2.f);
+  registry.patch<transform>(entity, [](transform &t) { t.x = 5.f; });
+
+  enttx::commit changes{};
+  observer->collect(changes);
+
+  enttx::commit undo = changes.invert();
+  undo.apply(registry);
+}
+```
+- **Change tracking:** Observe component creation, modification and removal through the `change_mixin`.
+- **Commit system:** Collect changes from observers into `commits`, these `commits` can then be serialized, inverted and applied to `registries`.
+- **Support for pageless types:** Observers can also be created for components where `entt::component_traits<T>::page_size == 0`. 
 
 ## Roadmap
 - [x] Entity hierarchies
