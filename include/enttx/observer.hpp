@@ -27,7 +27,7 @@ namespace enttx {
 
 template <typename, typename = entt::entity> struct change;
 
-template <typename Registry> class basic_observer_base;
+template <typename> class basic_observer_base;
 
 template <typename Registry>
 using basic_observers =
@@ -35,9 +35,9 @@ using basic_observers =
 
 template <typename> class basic_commit;
 
-template <typename Commit> class basic_commit_snapshot;
+template <typename> class basic_commit_snapshot;
 
-template <typename Commit> class basic_commit_loader;
+template <typename> class basic_commit_loader;
 
 /*! @brief Alias declaration for the most common use case. */
 using observer_base = basic_observer_base<entt::registry>;
