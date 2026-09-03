@@ -17,11 +17,12 @@
 #include <entt/core/type_info.hpp>
 #include <entt/entity/fwd.hpp>
 #include <entt/signal/fwd.hpp>
+#include <entt/stl/memory.hpp>
+#include <entt/stl/type_traits.hpp>
+#include <entt/stl/vector.hpp>
 
-#include <memory>
-#include <optional>
-#include <variant>
-#include <vector>
+#include <optional> // TODO: entt does not provide its own optional yet
+#include <variant>  // TODO: entt does not provide its own variant yet
 
 namespace enttx {
 
@@ -31,7 +32,7 @@ template <typename> class basic_observer_base;
 
 template <typename Registry>
 using basic_observers =
-    std::vector<std::unique_ptr<basic_observer_base<Registry>>>;
+    stl::vector<stl::unique_ptr<basic_observer_base<Registry>>>;
 
 template <typename> class basic_commit;
 
@@ -120,15 +121,15 @@ template <typename T, typename Entity> struct change {
     inverted.entity = this->entity;
     std::visit(
         [&inverted](const auto &change) {
-          using ChangeType = std::decay_t<decltype(change)>;
-          if constexpr (std::is_same_v<ChangeType, construct>) {
+          using ChangeType = stl::decay_t<decltype(change)>;
+          if constexpr (stl::is_same_v<ChangeType, construct>) {
             inverted.payload = destruct{change.value};
-          } else if constexpr (std::is_same_v<ChangeType, destruct>) {
+          } else if constexpr (stl::is_same_v<ChangeType, destruct>) {
             inverted.payload = construct{change.value};
-          } else if constexpr (std::is_same_v<ChangeType, update>) {
+          } else if constexpr (stl::is_same_v<ChangeType, update>) {
             inverted.payload = update{change.new_value, change.old_value};
           } else {
-            static_assert(std::false_type::value, "Unknown change type");
+            static_assert(stl::false_type::value, "Unknown change type");
           }
         },
         payload);
@@ -141,16 +142,16 @@ template <typename T, typename Entity> struct change {
     const entity_type entity = target == entt::null ? this->entity : target;
     std::visit(
         [&storage, entity](const auto &change) {
-          using ChangeType = std::decay_t<decltype(change)>;
-          if constexpr (std::is_same_v<ChangeType, construct>) {
+          using ChangeType = stl::decay_t<decltype(change)>;
+          if constexpr (stl::is_same_v<ChangeType, construct>) {
             storage.emplace(entity, change.value);
-          } else if constexpr (std::is_same_v<ChangeType, update>) {
+          } else if constexpr (stl::is_same_v<ChangeType, update>) {
             storage.patch(entity,
                           [&change](T &value) { value = change.new_value; });
-          } else if constexpr (std::is_same_v<ChangeType, destruct>) {
+          } else if constexpr (stl::is_same_v<ChangeType, destruct>) {
             storage.erase(entity);
           } else {
-            static_assert(std::false_type::value, "Unknown change type");
+            static_assert(stl::false_type::value, "Unknown change type");
           }
         },
         payload);
@@ -246,7 +247,7 @@ public:
   // TODO: This API is a hacky and not user friendly.
   template <typename T, typename Allocator>
   void
-  append_segment(std::vector<change<T, entity_type>, Allocator> &&changes,
+  append_segment(stl::vector<change<T, entity_type>, Allocator> &&changes,
                  const entt::id_type storage_id = entt::type_hash<T>::value()) {
     if (const auto it = segments.find(storage_id); it != segments.end()) {
       auto &existing = static_cast<segment<T> &>(*it->second).changes;
@@ -254,26 +255,26 @@ public:
                       std::make_move_iterator(changes.end()));
       return;
     }
-    auto s = std::make_unique<segment<T>>();
-    s->changes = std::move(changes);
-    segments[storage_id] = std::move(s);
+    auto s = stl::make_unique<segment<T>>();
+    s->changes = stl::move(changes);
+    segments[storage_id] = stl::move(s);
   }
 
 private:
   struct segment_base {
     virtual ~segment_base() = default;
-    virtual std::unique_ptr<segment_base> invert() const = 0;
+    virtual stl::unique_ptr<segment_base> invert() const = 0;
     virtual void apply(Registry &registry, const entt::id_type storage_id,
                        const entity_remap_type *remap = nullptr) const = 0;
   };
 
   template <typename T> struct segment final : public segment_base {
-    using change_list_type = std::vector<change<T, entity_type>>;
+    using change_list_type = stl::vector<change<T, entity_type>>;
 
     change_list_type changes;
 
-    std::unique_ptr<segment_base> invert() const override {
-      auto inverted = std::make_unique<segment<T>>();
+    stl::unique_ptr<segment_base> invert() const override {
+      auto inverted = stl::make_unique<segment<T>>();
       inverted->changes.reserve(changes.size());
       for (auto rit = changes.rbegin(); rit != changes.rend(); ++rit) {
         inverted->changes.emplace_back(rit->invert());
@@ -299,7 +300,7 @@ private:
     }
   };
 
-  entt::dense_map<entt::id_type, std::unique_ptr<segment_base>> segments;
+  entt::dense_map<entt::id_type, stl::unique_ptr<segment_base>> segments;
 };
 
 /*!
@@ -308,7 +309,7 @@ private:
  * @tparam Commit Type of the commit to be serialized.
  */
 template <typename Commit> class basic_commit_snapshot {
-  static_assert(!std::is_const_v<Commit>, "Non-const commit type required");
+  static_assert(!stl::is_const_v<Commit>, "Non-const commit type required");
 
 public:
   /*! @brief Basic commit type. */
@@ -362,7 +363,7 @@ public:
    * in the registry.
    */
   template <typename T, typename Archive,
-            std::invocable<entity_type> EntityHandler>
+            stl::invocable<entity_type> EntityHandler>
   const basic_commit_snapshot &
   get(Archive &archive, EntityHandler &&entity_handler,
       const entt::id_type storage_id = entt::type_hash<T>::value()) const {
@@ -371,7 +372,7 @@ public:
 
     if (it == commit->segments.end()) {
       archive(
-          std::size_t{0}); // No changes for this storage_id, serialize as empty
+          stl::size_t{0}); // No changes for this storage_id, serialize as empty
       return *this;
     }
 
@@ -380,15 +381,15 @@ public:
     archive(changes.size());
 
     for (const auto &change : changes) {
-      using change_type = std::decay_t<decltype(change)>;
+      using change_type = stl::decay_t<decltype(change)>;
 
       archive(entity_handler(change.entity));
-      archive(static_cast<std::uint8_t>(change.payload.index()));
+      archive(static_cast<stl::uint8_t>(change.payload.index()));
 
       if constexpr (!is_pageless<T, entity_type>) {
         std::visit(
             [&archive](const auto &c) {
-              if constexpr (std::is_same_v<std::decay_t<decltype(c)>,
+              if constexpr (stl::is_same_v<stl::decay_t<decltype(c)>,
                                            typename change_type::update>) {
                 archive(c.old_value, c.new_value);
               } else {
@@ -467,27 +468,27 @@ public:
    * @return This loader.
    */
   template <typename T, typename Archive, typename EntityHandler>
-    requires(std::is_invocable_r_v<typename commit_type::entity_type,
+    requires(stl::is_invocable_r_v<typename commit_type::entity_type,
                                    EntityHandler, Archive &>)
   const basic_commit_loader &
   get(Archive &archive, EntityHandler &&entity_handler,
       const entt::id_type storage_id = entt::type_hash<T>::value()) const {
     using change_type = change<T, entity_type>;
 
-    std::size_t size{};
+    stl::size_t size{};
     archive(size);
 
     if (size == 0u) {
       return *this;
     }
 
-    std::vector<change_type> changes;
+    stl::vector<change_type> changes;
     changes.reserve(size);
 
-    for (std::size_t i = 0; i < size; ++i) {
+    for (stl::size_t i = 0; i < size; ++i) {
       entity_type entity = entity_handler(archive);
 
-      std::uint8_t index{};
+      stl::uint8_t index{};
       archive(index);
 
       typename change_type::variant_type payload;
@@ -502,7 +503,7 @@ public:
         } else {
           T value{};
           archive(value);
-          payload = construct{std::move(value)};
+          payload = construct{stl::move(value)};
         }
         break;
       }
@@ -513,7 +514,7 @@ public:
         } else {
           T value{};
           archive(value);
-          payload = destruct{std::move(value)};
+          payload = destruct{stl::move(value)};
         }
         break;
       }
@@ -526,7 +527,7 @@ public:
           using update_change = typename change_type::update;
           T old_value{}, new_value{};
           archive(old_value, new_value);
-          payload = update_change{std::move(old_value), std::move(new_value)};
+          payload = update_change{stl::move(old_value), stl::move(new_value)};
         }
         break;
       }
@@ -536,10 +537,10 @@ public:
         return *this;
       }
 
-      changes.push_back(change_type{entity, std::move(payload)});
+      changes.push_back(change_type{entity, stl::move(payload)});
     }
 
-    commit->template append_segment<T>(std::move(changes), storage_id);
+    commit->template append_segment<T>(stl::move(changes), storage_id);
 
     return *this;
   }
@@ -593,7 +594,7 @@ concept is_change_observer_storage =
 /*! @brief Tracks changes to components of type `T` within the given `Registry`.
  */
 template <is_change_observer_storage Storage,
-          typename Allocator = std::allocator<change<
+          typename Allocator = stl::allocator<change<
               typename Storage::element_type, typename Storage::entity_type>>>
 class basic_observer final
     : public basic_observer_base<typename Storage::registry_type> {
@@ -609,7 +610,7 @@ public:
   /*! @brief Type of the change being tracked. */
   using change_type = change<element_type, entity_type>;
   /*! @brief Container for the changes being tracked. */
-  using change_list_type = std::vector<change_type, allocator_type>;
+  using change_list_type = stl::vector<change_type, allocator_type>;
   /*! @brief Base type for commits. */
   using commit_base_type = basic_commit<typename storage_type::registry_type>;
 
@@ -653,7 +654,7 @@ public:
     // TODO: Add an option to flatten changes into a single net change for
     // networking?
     if (!changes.empty()) {
-      commit.template append_segment<element_type>(std::move(changes),
+      commit.template append_segment<element_type>(stl::move(changes),
                                                    storage_id);
       changes.clear();
     }
@@ -662,7 +663,7 @@ public:
 private:
   // TODO: See comment in on_update
   [[no_unique_address]]
-  std::conditional_t<!is_pageless<element_type, entity_type>,
+  stl::conditional_t<!is_pageless<element_type, entity_type>,
                      std::optional<element_type>, std::monostate>
       pre_update_value;
 
@@ -691,7 +692,7 @@ private:
     // that would invalidate this.
     changes.emplace_back(
         entity, typename change_type::update{
-                    std::move(pre_update_value).value(), storage.get(entity)});
+                    stl::move(pre_update_value).value(), storage.get(entity)});
     pre_update_value.reset();
   }
 
@@ -715,12 +716,12 @@ private:
  * @return A unique pointer to the created observer.
  */
 template <typename T, typename Registry>
-[[nodiscard]] std::unique_ptr<basic_observer_base<Registry>>
+[[nodiscard]] stl::unique_ptr<basic_observer_base<Registry>>
 observe(Registry &registry,
         entt::id_type storage_id = entt::type_hash<T>::value()) {
   auto &storage = registry.template storage<T>(storage_id);
-  using storage_type = std::remove_reference_t<decltype(storage)>;
-  return std::make_unique<internal::basic_observer<storage_type>>(storage_id,
+  using storage_type = stl::remove_reference_t<decltype(storage)>;
+  return stl::make_unique<internal::basic_observer<storage_type>>(storage_id,
                                                                   storage);
 }
 

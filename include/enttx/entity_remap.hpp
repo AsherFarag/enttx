@@ -1,11 +1,12 @@
 #pragma once
-#include "config.hpp"
+#include "core.hpp"
 
 #include <entt/container/dense_map.hpp>
 #include <entt/entity/entity.hpp>
 #include <entt/fwd.hpp>
+#include <entt/stl/concepts.hpp>
 
-#include <concepts>
+#include <concepts> // TODO: entt does not provide its own equality_comparable_with yet
 
 namespace enttx {
 
@@ -14,7 +15,7 @@ namespace enttx {
 template <typename T, typename Registry = entt::registry>
 concept is_entity_remapper =
     requires(const T &remapper, typename Registry::entity_type e) {
-      { remapper(e) } -> std::same_as<typename Registry::entity_type>;
+      { remapper(e) } -> stl::same_as<typename Registry::entity_type>;
     };
 
 /*! @brief Checks if a type T has a static member function `remap` satisfying
@@ -24,7 +25,7 @@ concept has_member_remap =
     is_entity_remapper<Remapper, Registry> &&
     requires(Registry &reg, typename Registry::entity_type e,
              const Remapper &remap) {
-      { T::remap(reg, e, remap) } -> std::same_as<void>;
+      { T::remap(reg, e, remap) } -> stl::same_as<void>;
     };
 
 /*!
@@ -50,7 +51,7 @@ concept is_remappable =
     is_entity_remapper<Remapper, Registry> &&
     requires(Registry &reg, typename Registry::entity_type e,
              const Remapper &remapper) {
-      { remap_traits<T>::remap(reg, e, remapper) } -> std::same_as<void>;
+      { remap_traits<T>::remap(reg, e, remapper) } -> stl::same_as<void>;
     };
 
 /*!

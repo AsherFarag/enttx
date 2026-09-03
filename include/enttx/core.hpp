@@ -8,6 +8,9 @@
 #include <entt/entity/component.hpp>
 
 namespace enttx {
+
+namespace stl = entt::stl;
+
 /*!
  * @brief Checks if a type T is pageless (i.e., has a page size of 0).
  * @tparam T The type to check.

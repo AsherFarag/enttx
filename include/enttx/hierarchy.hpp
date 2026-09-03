@@ -7,22 +7,21 @@
  */
 
 #pragma once
-#include "config.hpp"
+#include "core.hpp"
 #include "entity_remap.hpp"
 
 #include <entt/entity/entity.hpp>
 #include <entt/entity/fwd.hpp>
 #include <entt/signal/sigh.hpp>
-
-#include <concepts>
-#include <cstdint>
-#include <functional>
+#include <entt/stl/concepts.hpp>
+#include <entt/stl/cstdint.hpp>
+#include <entt/stl/functional.hpp>
 
 namespace enttx {
 
 /*! @brief Describes how a hierarchy should handle it's relationship on
  * destruction. */
-enum class hierarchy_deletion_policy : std::uint8_t {
+enum class hierarchy_deletion_policy : stl::uint8_t {
   /*! @brief Destroy the children when the parent is destroyed. */
   destroy_children,
   /*! @brief Orphan the children when the parent is destroyed. */
@@ -64,9 +63,9 @@ class basic_child_iterator {
 public:
   using registry_type = typename Hierarchy::registry_type;
   using entity_type = typename Hierarchy::entity_type;
-  using iterator_category = std::forward_iterator_tag;
+  using iterator_category = stl::forward_iterator_tag;
   using value_type = entity_type;
-  using difference_type = std::ptrdiff_t;
+  using difference_type = stl::ptrdiff_t;
   using pointer = const entity_type *;
   using reference = const entity_type &;
 
@@ -172,7 +171,7 @@ public:
   /*! @brief Underlying version type. */
   using version_type = typename traits_type::version_type;
   /*! @brief Unsigned integer type. */
-  using size_type = std::uint32_t;
+  using size_type = stl::uint32_t;
   /*! @brief Tag type to distinguish different hierarchies in the same registry.
    */
   using tag_type = Tag;
@@ -402,11 +401,11 @@ public:
    * @param fn The callable to invoke for each child entity.
    */
   template <typename Fn>
-    requires std::invocable<Fn &, entity_type>
+    requires stl::invocable<Fn &, entity_type>
   static void for_each_child(const registry_type &reg, const entity_type parent,
                              Fn &&fn) {
     for (const entity_type child : children(reg, parent)) {
-      std::invoke(fn, child);
+      stl::invoke(fn, child);
     }
   }
 
@@ -419,12 +418,12 @@ public:
    * @param fn The callable to invoke for each descendant entity.
    */
   template <typename Fn>
-    requires std::invocable<Fn &, entity_type>
+    requires stl::invocable<Fn &, entity_type>
   static void for_each_descendant(const registry_type &reg,
                                   const entity_type parent, Fn &&fn) {
     for_each_child(reg, parent, [&](const entity_type child) {
       for_each_descendant(reg, child, fn);
-      std::invoke(fn, child);
+      stl::invoke(fn, child);
     });
   }
 

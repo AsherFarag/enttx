@@ -8,7 +8,7 @@
  */
 
 #pragma once
-#include "config.hpp"
+#include "core.hpp"
 
 #include <entt/entity/mixin.hpp>
 #include <entt/signal/sigh.hpp>
@@ -43,12 +43,12 @@ namespace internal {
 
 /*! @brief Checks if a type has an `on_pre_update` static member function. */
 template <typename, typename>
-struct has_on_pre_update final : std::false_type {};
+struct has_on_pre_update final : stl::false_type {};
 
 template <typename Type, typename Registry>
-  requires std::invocable<decltype(&Type::on_pre_update), Registry &,
+  requires stl::invocable<decltype(&Type::on_pre_update), Registry &,
                           typename Registry::entity_type>
-struct has_on_pre_update<Type, Registry> : std::true_type {};
+struct has_on_pre_update<Type, Registry> : stl::true_type {};
 
 template <typename Type, typename Registry>
 class basic_pre_update_mixin : public Type {
@@ -63,7 +63,7 @@ class basic_pre_update_mixin : public Type {
                       const typename underlying_type::entity_type),
                  typename underlying_type::allocator_type>;
 
-  static_assert(std::is_base_of_v<basic_registry_type, owner_type>,
+  static_assert(stl::is_base_of_v<basic_registry_type, owner_type>,
                 "Invalid registry type");
 
   [[nodiscard]] auto &owner_or_assert() const noexcept {
@@ -75,13 +75,13 @@ protected:
   void bind_any(entt::any value) noexcept override {
     owner = entt::any_cast<basic_registry_type>(&value);
 
-    if constexpr (!std::is_same_v<registry_type, basic_registry_type>) {
+    if constexpr (!stl::is_same_v<registry_type, basic_registry_type>) {
       if (owner == nullptr) {
         owner = entt::any_cast<registry_type>(&value);
       }
     }
 
-    underlying_type::bind_any(std::move(value));
+    underlying_type::bind_any(stl::move(value));
   }
 
 public:
@@ -117,7 +117,7 @@ public:
    */
   basic_pre_update_mixin(basic_pre_update_mixin &&other) noexcept
       : underlying_type{static_cast<underlying_type &&>(other)},
-        owner{other.owner}, pre_update{std::move(other.pre_update)} {}
+        owner{other.owner}, pre_update{stl::move(other.pre_update)} {}
 
   /**
    * @brief Allocator-extended move constructor.
@@ -127,7 +127,7 @@ public:
   basic_pre_update_mixin(basic_pre_update_mixin &&other,
                          const allocator_type &allocator)
       : underlying_type{static_cast<underlying_type &&>(other), allocator},
-        owner{other.owner}, pre_update{std::move(other.pre_update), allocator} {
+        owner{other.owner}, pre_update{stl::move(other.pre_update), allocator} {
   }
 
   /*! @brief Default destructor. */
@@ -154,7 +154,7 @@ public:
    * @param other Storage to exchange the content with.
    */
   void swap(basic_pre_update_mixin &other) noexcept {
-    using std::swap;
+    using stl::swap;
     swap(owner, other.owner);
     swap(pre_update, other.pre_update);
     underlying_type::swap(other);
@@ -181,7 +181,7 @@ public:
   template <typename... Func>
   void patch(const entity_type entt, Func &&...func) {
     pre_update.publish(owner_or_assert(), entt);
-    underlying_type::patch(entt, std::forward<Func>(func)...);
+    underlying_type::patch(entt, stl::forward<Func>(func)...);
   }
 
 private:

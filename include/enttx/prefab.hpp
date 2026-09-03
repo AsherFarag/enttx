@@ -9,14 +9,14 @@
 #include "hierarchy.hpp"
 #include "stable_id.hpp"
 
+#include <entt/container/dense_set.hpp>
 #include <entt/core/type_info.hpp>
 #include <entt/entity/registry.hpp>
+#include <entt/stl/algorithm.hpp>
+#include <entt/stl/utility.hpp>
+#include <entt/stl/vector.hpp>
 
-#include <algorithm>
-#include <span>
-#include <unordered_set>
-#include <utility>
-#include <vector>
+#include <span> // TODO: entt does not provide its own span yet
 
 namespace enttx {
 
@@ -32,7 +32,7 @@ using prefab_id = entt::id_type;
  * This is what allows derived prefabs to target a specific inherited node
  * for overrides.
  */
-using node_id = basic_stable_id<std::uint32_t, struct node_id_tag>;
+using node_id = basic_stable_id<stl::uint32_t, struct node_id_tag>;
 
 /*! @brief Generates unique identifiers for nodes in the prefab system. */
 using node_id_generator = basic_monotonic_stable_id_generator<node_id>;
@@ -116,7 +116,7 @@ static basic_component_ops<Registry> get_component_ops() {
  * between "not overridden" and "explicitly deleted".
  */
 struct removed_components {
-  std::unordered_set<entt::id_type> types;
+  entt::dense_set<entt::id_type> types;
 };
 
 /*!
@@ -124,7 +124,7 @@ struct removed_components {
  * which inherited children (by node_id) this level deletes entirely.
  */
 struct removed_children {
-  std::unordered_set<node_id> ids;
+  entt::dense_set<node_id> ids;
 };
 
 /*!
@@ -197,7 +197,7 @@ public:
   registry_type &def_reg{};
 
   /*! @brief Registered component operations, keyed by component type id. */
-  std::unordered_map<entt::id_type, component_ops_type> component_ops;
+  entt::dense_map<entt::id_type, component_ops_type> component_ops;
 
   basic_prefab_registry(registry_type &reg) : def_reg{reg} {}
   basic_prefab_registry(const basic_prefab_registry &) = delete;
@@ -291,7 +291,7 @@ public:
     }
 
     return def_reg.template emplace_or_replace<T>(e,
-                                                  std::forward<Args>(args)...);
+                                                  stl::forward<Args>(args)...);
   }
 
   /*! @brief Explicitly removes (strips) an inherited or local component of type
@@ -420,9 +420,9 @@ public:
   /*! @brief */
   template <typename Underlying> class prefab_id_iterator {
   public:
-    using iterator_category = std::forward_iterator_tag;
+    using iterator_category = stl::forward_iterator_tag;
     using value_type = prefab_id;
-    using difference_type = std::ptrdiff_t;
+    using difference_type = stl::ptrdiff_t;
     using pointer = const prefab_id *;
     using reference = prefab_id;
 
@@ -569,15 +569,15 @@ protected:
   node_id_generator id_gen_;
 
   /*! @brief prefab_id -> its asset entity in def_reg. */
-  std::unordered_map<prefab_id, entity_type> prefab_entities_;
+  entt::dense_map<prefab_id, entity_type> prefab_entities_;
 
   /*! @brief node_id -> its (single, level-independent) logical parent node_id.
    */
-  std::unordered_map<node_id, node_id> node_parent_;
+  entt::dense_map<node_id, node_id> node_parent_;
 
   /*! @brief prefab_id -> (node_id -> authoring entity in def_reg) for that
    * level. */
-  std::unordered_map<prefab_id, std::unordered_map<node_id, entity_type>>
+  entt::dense_map<prefab_id, entt::dense_map<node_id, entity_type>>
       node_authoring_;
 
   void mark_authored(const entity_type e) {
@@ -608,8 +608,8 @@ protected:
   /*! @brief Builds the IsA chain of prefabs from the given leaf up to the root.
    */
   [[nodiscard]]
-  std::vector<prefab_id> build_chain(const prefab_id leaf) const {
-    std::vector<prefab_id> chain;
+  stl::vector<prefab_id> build_chain(const prefab_id leaf) const {
+    stl::vector<prefab_id> chain;
     entity_type cur = get_prefab_entity(leaf);
     while (cur != entt::null) {
       ENTTX_ASSERT(def_reg.template all_of<prefab_id>(cur),
@@ -623,7 +623,7 @@ protected:
 
   void
   apply_remap(registry_type &target, const entity_remap_type &remap,
-              std::span<const std::pair<entt::id_type, entity_type>> touched) {
+              std::span<const stl::pair<entt::id_type, entity_type>> touched) {
     // TODO: Currently an entity can get remapped multiple times from overrides.
     // For now its fine but could be optimized.
     for (const auto &[id, te] : touched) {
@@ -644,9 +644,9 @@ protected:
     const node_id root_node = def_reg.template get<node_id>(prefab_entity);
 
     // TODO: Use pmr for this temp allocated containers?
-    const std::vector<prefab_id> chain = build_chain(prefab);
+    const stl::vector<prefab_id> chain = build_chain(prefab);
     entity_remap_type remap;
-    std::vector<std::pair<entt::id_type, entity_type>> touched;
+    stl::vector<stl::pair<entt::id_type, entity_type>> touched;
 
     const entity_type root = collapse_node(root_node, chain, target, entt::null,
                                            reuse, remap, touched);
@@ -661,7 +661,7 @@ protected:
   collapse_node(const node_id logical_node, std::span<const prefab_id> chain,
                 registry_type &target, const entity_type target_parent,
                 const entity_type reuse, entity_remap_type &remap,
-                std::vector<std::pair<entt::id_type, entity_type>> &touched) {
+                stl::vector<stl::pair<entt::id_type, entity_type>> &touched) {
     const entity_type te = (reuse != entt::null) ? reuse : target.create();
 
     if (target_parent != entt::null) {
@@ -718,13 +718,13 @@ protected:
     }
 
     // TODO: This is both allocation heavy and like O(children^2).
-    // Figure out a bter way to do this like using std::pmr and unordered_sets?
+    // Figure out a bter way to do this like using stl::pmr and unordered_sets?
 
     // Build a list of all children authored at any level of the chain, in order
     // from most-derived to most-base, skipping duplicates.
 
-    std::vector<node_id> ordered_children;
-    std::vector<node_id> removed_ids;
+    stl::vector<node_id> ordered_children;
+    stl::vector<node_id> removed_ids;
 
     // We want to iterate from most-derived to most-base so that the
     // most-derived authored children are first in the list.
@@ -790,20 +790,20 @@ public:
   basic_prefab_builder &operator=(const basic_prefab_builder &) = delete;
 
   template <typename BuilderFn>
-    requires(std::invocable<BuilderFn, basic_prefab_builder &>)
+    requires(stl::invocable<BuilderFn, basic_prefab_builder &>)
   basic_prefab_builder &add_child(BuilderFn &&fn) {
     const node_id new_child = reg_.add_child(prefab_, node_);
     basic_prefab_builder child_builder{reg_, prefab_, new_child};
-    std::invoke(std::forward<BuilderFn>(fn), child_builder);
+    stl::invoke(stl::forward<BuilderFn>(fn), child_builder);
     return *this;
   }
 
   template <typename BuilderFn>
-    requires(std::invocable<BuilderFn, basic_prefab_builder &>)
+    requires(stl::invocable<BuilderFn, basic_prefab_builder &>)
   basic_prefab_builder &override_child(node_id child, BuilderFn &&fn) {
     reg_.override_child(prefab_, child);
     basic_prefab_builder child_builder{reg_, prefab_, child};
-    std::invoke(std::forward<BuilderFn>(fn), child_builder);
+    stl::invoke(stl::forward<BuilderFn>(fn), child_builder);
     return *this;
   }
 
@@ -819,7 +819,7 @@ public:
 
   template <typename T, typename... Args>
   basic_prefab_builder &emplace(Args &&...args) {
-    reg_.template emplace<T>(prefab_, node_, std::forward<Args>(args)...);
+    reg_.template emplace<T>(prefab_, node_, stl::forward<Args>(args)...);
     return *this;
   }
 
