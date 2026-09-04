@@ -1,16 +1,17 @@
 /*!
  * @file observer.hpp
- * @brief Observers track changes to components in an EnTT registry and can produce commits
- *        that can be applied to other registries. This is useful for networking, undo/redo 
- *        systems, and other scenarios where you want to track changes to a registry over time.
- * 
+ * @brief Observers track changes to components in an EnTT registry and can
+ * produce commits that can be applied to other registries. This is useful for
+ * networking, undo/redo systems, and other scenarios where you want to track
+ * changes to a registry over time.
+ *
  * @code{.cpp}
  * entt::registry reg_a;
  * entt::entity entity_a = reg_a.create();
  *
  * enttx::observers observers;
  * observers.emplace_back(enttx::observe<name>(reg_a));
- * 
+ *
  * reg_a.emplace<name>(entity_a, "Player");
  * reg_a.patch<name>(entity_a, [](name &n) { n.value = "Hero"; });
  *
@@ -21,10 +22,10 @@
  *
  * entt::registry reg_b;
  * entt::entity entity_b = reg_b.create();
- * 
+ *
  * const auto remap = enttx::entity_remap{}.map(entity_a, entity_b);
  * changes.apply(reg_b, &remap);
- * 
+ *
  * reg_b.get<name>(entity_b).value; // "Hero"
  * @endcode
  */
@@ -57,27 +58,32 @@ namespace enttx {
 template <typename, typename> struct basic_change;
 
 template <typename> class basic_observer_base;
-  
-template <typename Registry, typename Allocator = stl::allocator<stl::unique_ptr<basic_observer_base<Registry>>>>
+
+template <typename Registry,
+          typename Allocator =
+              stl::allocator<stl::unique_ptr<basic_observer_base<Registry>>>>
 using basic_observers =
     stl::vector<stl::unique_ptr<basic_observer_base<Registry>>, Allocator>;
 
-template <typename Registry, typename Allocator = typename Registry::allocator_type> class basic_commit;
+template <typename Registry,
+          typename Allocator = typename Registry::allocator_type>
+class basic_commit;
 
 template <typename> class basic_commit_snapshot;
 
 template <typename> class basic_commit_loader;
 
 /*! @brief Type of a list of changes for a specific component type. */
-template <typename T, typename Entity, typename Allocator = stl::allocator<basic_change<T, Entity>>>
+template <typename T, typename Entity,
+          typename Allocator = stl::allocator<basic_change<T, Entity>>>
 using basic_change_list = stl::vector<basic_change<T, Entity>, Allocator>;
 
 /*! @brief Alias declaration for the most common use case. */
-template <typename T>
-using change = basic_change<T, entt::entity>;
+template <typename T> using change = basic_change<T, entt::entity>;
 
 /*! @brief Alias declaration for the most common use case. */
-template <typename T, typename Allocator = stl::allocator<basic_change<T, entt::entity>>>
+template <typename T,
+          typename Allocator = stl::allocator<basic_change<T, entt::entity>>>
 using change_list = basic_change_list<T, entt::entity, Allocator>;
 
 /*! @brief Alias declaration for the most common use case. */
@@ -247,15 +253,19 @@ template <typename Registry, typename Allocator> class basic_commit {
 private:
   using traits_type = entt::entt_traits<typename Registry::entity_type>;
   using alloc_traits = stl::allocator_traits<Allocator>;
-  
-  template<typename T>
-  auto& get_or_emplace_segment(const entt::id_type storage_id = entt::type_hash<T>::value()) {
+
+  template <typename T>
+  auto &get_or_emplace_segment(
+      const entt::id_type storage_id = entt::type_hash<T>::value()) {
     auto it = segments.find(storage_id);
     if (it == segments.end()) {
       // TODO: Make the segment allocation use the allocator.
-      it = segments.emplace(storage_id, stl::make_unique<segment<T>>(get_allocator())).first;
+      it = segments
+               .emplace(storage_id,
+                        stl::make_unique<segment<T>>(get_allocator()))
+               .first;
     }
-	  return static_cast<segment<T>&>( *it->second );
+    return static_cast<segment<T> &>(*it->second);
   }
 
 public:
@@ -267,22 +277,25 @@ public:
   using entity_type = typename traits_type::value_type;
   /*! @brief Type used for remapping entities during commit application. */
   using entity_remap_type = basic_entity_remap<entity_type, entity_type>;
-  /*! @brief Allocator type used for the list of changes for a specific component type. */
-  template<typename T>
-  using change_allocator_type = typename alloc_traits::template rebind_alloc<basic_change<T, entity_type>>;
+  /*! @brief Allocator type used for the list of changes for a specific
+   * component type. */
+  template <typename T>
+  using change_allocator_type = typename alloc_traits::template rebind_alloc<
+      basic_change<T, entity_type>>;
   /*! @brief Type of the list of changes for a specific component type. */
-  template<typename T>
-  using change_list_type = basic_change_list<T, entity_type, change_allocator_type<T>>;
-  /*! @brief Type of the view of the list of changes for a specific component type. */
-  template<typename T>
+  template <typename T>
+  using change_list_type =
+      basic_change_list<T, entity_type, change_allocator_type<T>>;
+  /*! @brief Type of the view of the list of changes for a specific component
+   * type. */
+  template <typename T>
   using change_list_view_type = std::span<const basic_change<T, entity_type>>;
 
   /*!
    * @brief Constructs an empty commit with a given allocator.
    * @param allocator The allocator to use.
    */
-  basic_commit(const allocator_type &allocator = {})
-      : segments(allocator) {}
+  basic_commit(const allocator_type &allocator = {}) : segments(allocator) {}
 
   /*! @brief Default copy constructor, deleted on purpose. */
   basic_commit(const basic_commit &) = delete;
@@ -355,69 +368,82 @@ public:
   /*!
    * @brief Checks if there are any changes for a specific component type.
    * @param storage_id The storage identifier for the component type.
-   * @return True if there are changes for the specified component type, false otherwise.
+   * @return True if there are changes for the specified component type, false
+   * otherwise.
    */
   [[nodiscard]] bool has_changes(const entt::id_type storage_id) const {
     return segments.find(storage_id) != segments.end();
   }
 
-  /*! 
+  /*!
    * @brief Checks if there are any changes for a specific component type.
    * @tparam T The component type for which the changes are being checked.
-   * @param storage_id The storage identifier for the component type. Defaults to the type hash of T.
-   * @return True if there are changes for the specified component type, false otherwise.
+   * @param storage_id The storage identifier for the component type. Defaults
+   * to the type hash of T.
+   * @return True if there are changes for the specified component type, false
+   * otherwise.
    */
-  template<typename T>
-  [[nodiscard]] bool has_changes(const entt::id_type storage_id = entt::type_hash<T>::value()) const {
+  template <typename T>
+  [[nodiscard]] bool has_changes(
+      const entt::id_type storage_id = entt::type_hash<T>::value()) const {
     return has_changes(storage_id);
   }
 
   /*!
    * @brief Gets or emplaces the list of changes for a specific component type.
    * @tparam T The component type for which the changes are being retrieved.
-   * @param storage_id The storage identifier for the component type. Defaults to the type hash of T.
-   * @return A reference to the list of changes for the specified component type.
-   * @remark If no segment exists for the given storage_id, a new empty segment will be created.
+   * @param storage_id The storage identifier for the component type. Defaults
+   * to the type hash of T.
+   * @return A reference to the list of changes for the specified component
+   * type.
+   * @remark If no segment exists for the given storage_id, a new empty segment
+   * will be created.
    */
   template <typename T>
-  [[nodiscard]] change_list_type<T> &changes(const entt::id_type storage_id = entt::type_hash<T>::value()) {
+  [[nodiscard]] change_list_type<T> &
+  changes(const entt::id_type storage_id = entt::type_hash<T>::value()) {
     return get_or_emplace_segment<T>(storage_id).changes;
   }
 
   /*!
    * @brief Gets a view of the list of changes for a specific component type.
    * @tparam T The component type for which the changes are being retrieved.
-   * @param storage_id The storage identifier for the component type. Defaults to the type hash of T.
+   * @param storage_id The storage identifier for the component type. Defaults
+   * to the type hash of T.
    * @return A view of the list of changes for the specified component type.
-   * @remark If no segment exists for the given storage_id, an empty view will be returned.
+   * @remark If no segment exists for the given storage_id, an empty view will
+   * be returned.
    */
   template <typename T>
-  [[nodiscard]] change_list_view_type<T> view_changes(const entt::id_type storage_id = entt::type_hash<T>::value()) const {
+  [[nodiscard]] change_list_view_type<T> view_changes(
+      const entt::id_type storage_id = entt::type_hash<T>::value()) const {
     if (const auto it = segments.find(storage_id); it != segments.end()) {
       return static_cast<const segment<T> &>(*it->second).changes;
     }
-	return {};
+    return {};
   }
 
   /*!
-   * @brief Appends a list of changes for a specific component type to the commit.
+   * @brief Appends a list of changes for a specific component type to the
+   * commit.
    * @tparam T The component type for which the changes are being appended.
    * @tparam Allocator The allocator type used for the list of changes.
    * @param changes The list of changes to append.
-   * @param storage_id The storage identifier for the component type. Defaults to the type hash of T.
-   * @remark If a segment for the given storage_id already exists, the changes will be appended to it. Otherwise, a new segment will be created.
-   */ 
+   * @param storage_id The storage identifier for the component type. Defaults
+   * to the type hash of T.
+   * @remark If a segment for the given storage_id already exists, the changes
+   * will be appended to it. Otherwise, a new segment will be created.
+   */
   template <typename T, typename Allocator>
-  void append(basic_change_list<T, entity_type, Allocator> &&to_append, const entt::id_type storage_id = entt::type_hash<T>::value()) {
+  void append(basic_change_list<T, entity_type, Allocator> &&to_append,
+              const entt::id_type storage_id = entt::type_hash<T>::value()) {
     if (to_append.empty()) {
       return; // No changes to append, exit early.
     }
 
-    auto& c = changes<T>(storage_id);
-    c.insert( c.end(),
-        std::make_move_iterator(to_append.begin()),
-        std::make_move_iterator(to_append.end())
-    );
+    auto &c = changes<T>(storage_id);
+    c.insert(c.end(), std::make_move_iterator(to_append.begin()),
+             std::make_move_iterator(to_append.end()));
   }
 
   /*!
@@ -489,12 +515,11 @@ private:
     }
   };
 
-  using segment_storage_type = entt::dense_map<
-    entt::id_type, 
-    stl::unique_ptr<segment_base>, 
-    stl::hash<entt::id_type>, 
-    std::equal_to<>, 
-    typename alloc_traits::template rebind_alloc<std::pair<const entt::id_type, stl::unique_ptr<segment_base>>>>;
+  using segment_storage_type =
+      entt::dense_map<entt::id_type, stl::unique_ptr<segment_base>,
+                      stl::hash<entt::id_type>, std::equal_to<>,
+                      typename alloc_traits::template rebind_alloc<std::pair<
+                          const entt::id_type, stl::unique_ptr<segment_base>>>>;
 
   segment_storage_type segments;
 };
@@ -797,7 +822,8 @@ public:
   /*! @brief Type of the change being tracked. */
   using change_type = basic_change<element_type, entity_type>;
   /*! @brief Container for the changes being tracked. */
-  using change_list_type = basic_change_list<element_type, entity_type, allocator_type>;
+  using change_list_type =
+      basic_change_list<element_type, entity_type, allocator_type>;
   /*! @brief Type of the commit being used. */
   using commit_type = basic_commit<typename storage_type::registry_type>;
 
