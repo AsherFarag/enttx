@@ -352,13 +352,24 @@ public:
     }
   }
 
+  /*!
+   * @brief Checks if there are any changes for a specific component type.
+   * @param storage_id The storage identifier for the component type.
+   * @return True if there are changes for the specified component type, false otherwise.
+   */
+  [[nodiscard]] bool has_changes(const entt::id_type storage_id) const {
+    return segments.find(storage_id) != segments.end();
+  }
+
   /*! 
    * @brief Checks if there are any changes for a specific component type.
+   * @tparam T The component type for which the changes are being checked.
    * @param storage_id The storage identifier for the component type. Defaults to the type hash of T.
    * @return True if there are changes for the specified component type, false otherwise.
    */
+  template<typename T>
   [[nodiscard]] bool has_changes(const entt::id_type storage_id = entt::type_hash<T>::value()) const {
-    return segments.find(storage_id) != segments.end();
+    return has_changes(storage_id);
   }
 
   /*!
@@ -385,7 +396,7 @@ public:
     if (const auto it = segments.find(storage_id); it != segments.end()) {
       return static_cast<const segment<T> &>(*it->second).changes;
     }
-	  return {};
+	return {};
   }
 
   /*!
