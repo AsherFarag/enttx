@@ -56,6 +56,89 @@ using hierarchy =
 
 namespace internal {
 
+template <typename Hierarchy> class basic_parent_iterator {
+public:
+  using registry_type = typename Hierarchy::registry_type;
+  using entity_type = typename Hierarchy::entity_type;
+  using iterator_category = stl::forward_iterator_tag;
+  using value_type = entity_type;
+  using difference_type = stl::ptrdiff_t;
+  using pointer = const entity_type *;
+  using reference = const entity_type &;
+
+  constexpr basic_parent_iterator() noexcept = default;
+
+  basic_parent_iterator(const registry_type &reg,
+                        const entity_type curr) noexcept
+      : reg_{&reg}, curr_{curr} {}
+
+  [[nodiscard]] reference operator*() const noexcept { return curr_; }
+  [[nodiscard]] pointer operator->() const noexcept { return &curr_; }
+
+  basic_parent_iterator &operator++() noexcept {
+    const auto *h = reg_->template try_get<Hierarchy>(curr_);
+    ENTTX_ASSERT(
+        h != nullptr,
+        "Corrupted hierarchy: parent does not have a hierarchy component");
+    const entity_type next = h->parent;
+    if (next == entt::null || !reg_->template all_of<Hierarchy>(next)) {
+      curr_ = entt::null;
+      return *this;
+    }
+    ENTTX_ASSERT(next != curr_,
+                 "Corrupted hierarchy: Cycle detected in hierarchy");
+    curr_ = next;
+    return *this;
+  }
+
+  basic_parent_iterator operator++(int) noexcept {
+    basic_parent_iterator tmp{*this};
+    ++(*this);
+    return tmp;
+  }
+
+  [[nodiscard]] friend bool
+  operator==(const basic_parent_iterator &lhs,
+             const basic_parent_iterator &rhs) noexcept {
+    return lhs.curr_ == rhs.curr_;
+  }
+
+  [[nodiscard]] friend bool
+  operator!=(const basic_parent_iterator &lhs,
+             const basic_parent_iterator &rhs) noexcept {
+    return !(lhs == rhs);
+  }
+
+private:
+  const registry_type *reg_{nullptr};
+  entity_type curr_{entt::null};
+};
+
+template <typename Hierarchy> struct basic_parents_view {
+  using registry_type = typename Hierarchy::registry_type;
+  using entity_type = typename Hierarchy::entity_type;
+  using iterator = basic_parent_iterator<Hierarchy>;
+
+  const registry_type &reg;
+  entity_type child;
+
+  [[nodiscard]] iterator begin() const noexcept {
+    const auto *h = reg.template try_get<Hierarchy>(child);
+    if (h == nullptr)
+      return end();
+
+    const entity_type parent = h->parent;
+    if (parent == entt::null || !reg.template all_of<Hierarchy>(parent))
+      return end();
+
+    return iterator{reg, parent};
+  }
+
+  [[nodiscard]] iterator end() const noexcept {
+    return iterator{reg, entt::null};
+  }
+};
+
 /*! @brief Forward iterator over children, following the `Next` sibling pointer.
  */
 template <typename Hierarchy, typename Hierarchy::entity_type Hierarchy::*Next>
@@ -70,6 +153,7 @@ public:
   using reference = const entity_type &;
 
   constexpr basic_child_iterator() noexcept = default;
+
   basic_child_iterator(const registry_type &reg,
                        const entity_type curr) noexcept
       : reg_{&reg}, curr_{curr} {
@@ -215,6 +299,10 @@ public:
                                      &basic_hierarchy::prev_sibling>;
   /*! @brief Lightweight range over a parent's direct children. */
   using children_view = internal::basic_children_view<basic_hierarchy>;
+  /*! @brief Forward iterator over the parents of a child entity. */
+  using parent_iterator = internal::basic_parent_iterator<basic_hierarchy>;
+  /*! @brief Lightweight range over the parents of a child entity. */
+  using parents_view = internal::basic_parents_view<basic_hierarchy>;
 
   /*! @brief Checks if a parent entity has any direct children. */
   [[nodiscard]]
@@ -235,6 +323,14 @@ public:
   static children_view children(const registry_type &reg,
                                 const entity_type parent) noexcept {
     return children_view{reg, parent};
+  }
+
+  /*! @brief Returns a range over the parents of a child for use with range-for
+   * or standard algorithms. */
+  [[nodiscard]]
+  static parents_view parents(const registry_type &reg,
+                              const entity_type child) noexcept {
+    return parents_view{reg, child};
   }
 
   /*!
@@ -436,13 +532,8 @@ public:
   [[nodiscard]]
   static entity_type find_root(const registry_type &reg, entity_type e) {
     entity_type root = e;
-    while (const auto *h = reg.template try_get<basic_hierarchy>(e)) {
-      const entity_type p = h->parent;
-      if (p == entt::null || !reg.template all_of<basic_hierarchy>(p))
-        break;
-
-      ENTTX_ASSERT(p != e, "Corrupted hierarchy: Cycle detected in hierarchy");
-      root = e = p;
+    for (entity_type p : parents(reg, e)) {
+      root = p;
     }
     return root;
   }
@@ -468,6 +559,139 @@ public:
     }
 
     return false;
+  }
+
+  /*!
+   * @brief Finds the first ancestor of an entity that contains all requested
+   *        component types.
+   * @param reg The registry containing the entities.
+   * @param e The entity whose ancestors to search.
+   * @return The nearest ancestor containing all requested components, or null.
+   */
+  template <typename... Type>
+    requires(sizeof...(Type) > 0u)
+  [[nodiscard]] static entity_type find_parent_with(const registry_type &reg,
+                                                    entity_type e) {
+    for (entity_type p : parents(reg, e)) {
+      if (reg.template all_of<Type...>(p)) {
+        return p;
+      }
+    }
+    return entt::null;
+  }
+
+  /*!
+   * @brief Finds the first direct child of an entity that contains all
+   *        requested component types.
+   */
+  template <typename... Type>
+    requires(sizeof...(Type) > 0u)
+  [[nodiscard]] static entity_type find_child_with(const registry_type &reg,
+                                                   const entity_type parent) {
+    for (const entity_type child : children(reg, parent)) {
+      if (reg.template all_of<Type...>(child)) {
+        return child;
+      }
+    }
+
+    return entt::null;
+  }
+
+  /*!
+   * @brief Finds the first descendant of an entity that contains all requested
+   *        component types, using depth-first pre-order traversal.
+   */
+  template <typename... Type>
+    requires(sizeof...(Type) > 0u)
+  [[nodiscard]] static entity_type
+  find_descendant_with(const registry_type &reg, const entity_type parent) {
+    for (const entity_type child : children(reg, parent)) {
+      if (reg.template all_of<Type...>(child)) {
+        return child;
+      }
+
+      if (const entity_type descendant =
+              find_descendant_with<Type...>(reg, child);
+          descendant != entt::null) {
+        return descendant;
+      }
+    }
+
+    return entt::null;
+  }
+
+  /*!
+   * @brief Tries to get components from the nearest ancestor of an entity.
+   *
+   * Matches the return shape of registry::try_get: a pointer for one component
+   * type and a tuple of pointers for multiple component types.
+   *
+   * For multiple component types, an ancestor must contain all requested
+   * components to be selected.
+   */
+  template <typename... Type>
+    requires(sizeof...(Type) > 0u)
+  [[nodiscard]] static auto try_get_in_parent(registry_type &reg,
+                                              const entity_type e) {
+    const entity_type parent = find_parent_with<Type...>(reg, e);
+    return reg.template try_get<Type...>(parent);
+  }
+
+  /*!
+   * @brief Const overload of try_get_in_parent.
+   */
+  template <typename... Type>
+    requires(sizeof...(Type) > 0u)
+  [[nodiscard]] static auto try_get_in_parent(const registry_type &reg,
+                                              const entity_type e) {
+    const entity_type parent = find_parent_with<Type...>(reg, e);
+    return reg.template try_get<Type...>(parent);
+  }
+
+  /*!
+   * @brief Tries to get components from the first direct child of an entity
+   *        containing all requested component types.
+   */
+  template <typename... Type>
+    requires(sizeof...(Type) > 0u)
+  [[nodiscard]] static auto try_get_in_child(registry_type &reg,
+                                             const entity_type parent) {
+    const entity_type child = find_child_with<Type...>(reg, parent);
+    return reg.template try_get<Type...>(child);
+  }
+
+  /*!
+   * @brief Const overload of try_get_in_child.
+   */
+  template <typename... Type>
+    requires(sizeof...(Type) > 0u)
+  [[nodiscard]] static auto try_get_in_child(const registry_type &reg,
+                                             const entity_type parent) {
+    const entity_type child = find_child_with<Type...>(reg, parent);
+    return reg.template try_get<Type...>(child);
+  }
+
+  /*!
+   * @brief Tries to get components from the first descendant of an entity
+   *        containing all requested component types.
+   */
+  template <typename... Type>
+    requires(sizeof...(Type) > 0u)
+  [[nodiscard]] static auto try_get_in_descendant(registry_type &reg,
+                                                  const entity_type parent) {
+    const entity_type descendant = find_descendant_with<Type...>(reg, parent);
+    return reg.template try_get<Type...>(descendant);
+  }
+
+  /*!
+   * @brief Const overload of try_get_in_descendant.
+   */
+  template <typename... Type>
+    requires(sizeof...(Type) > 0u)
+  [[nodiscard]] static auto try_get_in_descendant(const registry_type &reg,
+                                                  const entity_type parent) {
+    const entity_type descendant = find_descendant_with<Type...>(reg, parent);
+    return reg.template try_get<Type...>(descendant);
   }
 
   // ------------------------------------------------------------- Events

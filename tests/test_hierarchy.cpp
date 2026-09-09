@@ -715,7 +715,221 @@ TEST_SUITE("ancestry queries") {
     CHECK(destroy_hierarchy::is_descendant(reg, leaf, unrelated) == false);
   }
 
+  TEST_CASE("parents view walks strictly from the immediate parent upward, "
+            "excluding the starting entity itself") {
+    entt::registry reg;
+    auto root = reg.create();
+    auto mid = reg.create();
+    auto leaf = reg.create();
+
+    destroy_hierarchy::push_back(reg, root, mid);
+    destroy_hierarchy::push_back(reg, mid, leaf);
+
+    std::vector<entt::entity> visited;
+    for (auto p : destroy_hierarchy::parents(reg, leaf)) {
+      visited.push_back(p);
+    }
+    CHECK(visited == std::vector<entt::entity>{mid, root});
+  }
+
+  TEST_CASE("parents view on an entity without a hierarchy component is "
+            "empty") {
+    entt::registry reg;
+    auto e = reg.create();
+
+    auto view = destroy_hierarchy::parents(reg, e);
+    CHECK(view.begin() == view.end());
+  }
+
+  TEST_CASE("parents view on the root of a tree (no parent) is empty") {
+    entt::registry reg;
+    auto root = reg.create();
+    auto child = reg.create();
+    destroy_hierarchy::push_back(reg, root, child);
+
+    auto view = destroy_hierarchy::parents(reg, root);
+    CHECK(view.begin() == view.end());
+  }
+
 } // TEST_SUITE("ancestry queries")
+
+// ---------------------------------------------------------------------------
+// find_parent_with / find_child_with / find_descendant_with and the
+// corresponding try_get_in_* helpers
+// ---------------------------------------------------------------------------
+
+namespace {
+struct marker {
+  int value{};
+};
+} // namespace
+
+TEST_SUITE("component-aware hierarchy queries") {
+
+  TEST_CASE("find_parent_with finds the nearest ancestor with the requested "
+            "component, excluding the entity itself") {
+    entt::registry reg;
+    auto root = reg.create();
+    auto mid = reg.create();
+    auto leaf = reg.create();
+
+    destroy_hierarchy::push_back(reg, root, mid);
+    destroy_hierarchy::push_back(reg, mid, leaf);
+
+    reg.emplace<marker>(root, 1);
+    reg.emplace<marker>(leaf, 2); // leaf has its own marker, must be ignored
+
+    CHECK(destroy_hierarchy::find_parent_with<marker>(reg, leaf) == root);
+  }
+
+  TEST_CASE("find_parent_with prefers the closer ancestor over a farther "
+            "one") {
+    entt::registry reg;
+    auto root = reg.create();
+    auto mid = reg.create();
+    auto leaf = reg.create();
+
+    destroy_hierarchy::push_back(reg, root, mid);
+    destroy_hierarchy::push_back(reg, mid, leaf);
+
+    reg.emplace<marker>(root, 1);
+    reg.emplace<marker>(mid, 2);
+
+    CHECK(destroy_hierarchy::find_parent_with<marker>(reg, leaf) == mid);
+  }
+
+  TEST_CASE("find_parent_with returns null when no ancestor has the "
+            "component") {
+    entt::registry reg;
+    auto root = reg.create();
+    auto leaf = reg.create();
+    destroy_hierarchy::push_back(reg, root, leaf);
+
+    CHECK(destroy_hierarchy::find_parent_with<marker>(reg, leaf) == entt::null);
+  }
+
+  TEST_CASE("find_child_with finds the first direct child with the "
+            "requested component") {
+    entt::registry reg;
+    auto parent = reg.create();
+    auto c1 = reg.create();
+    auto c2 = reg.create();
+    auto c3 = reg.create();
+
+    destroy_hierarchy::push_back(reg, parent, c1);
+    destroy_hierarchy::push_back(reg, parent, c2);
+    destroy_hierarchy::push_back(reg, parent, c3);
+    reg.emplace<marker>(c2, 42);
+
+    CHECK(destroy_hierarchy::find_child_with<marker>(reg, parent) == c2);
+  }
+
+  TEST_CASE("find_child_with does not match grandchildren") {
+    entt::registry reg;
+    auto parent = reg.create();
+    auto child = reg.create();
+    auto grandchild = reg.create();
+
+    destroy_hierarchy::push_back(reg, parent, child);
+    destroy_hierarchy::push_back(reg, child, grandchild);
+    reg.emplace<marker>(grandchild, 1);
+
+    CHECK(destroy_hierarchy::find_child_with<marker>(reg, parent) ==
+          entt::null);
+  }
+
+  TEST_CASE("find_descendant_with performs a depth-first pre-order search") {
+    entt::registry reg;
+    auto root = reg.create();
+    auto a = reg.create();
+    auto b = reg.create();
+    auto a1 = reg.create();
+
+    destroy_hierarchy::push_back(reg, root, a);
+    destroy_hierarchy::push_back(reg, root, b);
+    destroy_hierarchy::push_back(reg, a, a1);
+    reg.emplace<marker>(a1, 1);
+    reg.emplace<marker>(b, 2);
+
+    // `a1` (under `a`) is visited before `b`, since `a` is the first child
+    // and its subtree is explored before moving on to the sibling `b`.
+    CHECK(destroy_hierarchy::find_descendant_with<marker>(reg, root) == a1);
+  }
+
+  TEST_CASE("find_descendant_with returns null when nothing in the subtree "
+            "matches") {
+    entt::registry reg;
+    auto root = reg.create();
+    auto child = reg.create();
+    destroy_hierarchy::push_back(reg, root, child);
+
+    CHECK(destroy_hierarchy::find_descendant_with<marker>(reg, root) ==
+          entt::null);
+  }
+
+  TEST_CASE("try_get_in_parent returns a pointer to the ancestor's "
+            "component, or nullptr when none matches") {
+    entt::registry reg;
+    auto root = reg.create();
+    auto leaf = reg.create();
+    destroy_hierarchy::push_back(reg, root, leaf);
+    reg.emplace<marker>(root, 7);
+
+    auto *found = destroy_hierarchy::try_get_in_parent<marker>(reg, leaf);
+    REQUIRE(found != nullptr);
+    CHECK(found->value == 7);
+
+    auto other = reg.create();
+    CHECK(destroy_hierarchy::try_get_in_parent<marker>(reg, other) == nullptr);
+  }
+
+  TEST_CASE("try_get_in_child returns a pointer to the matching direct "
+            "child's component") {
+    entt::registry reg;
+    auto parent = reg.create();
+    auto child = reg.create();
+    destroy_hierarchy::push_back(reg, parent, child);
+    reg.emplace<marker>(child, 9);
+
+    auto *found = destroy_hierarchy::try_get_in_child<marker>(reg, parent);
+    REQUIRE(found != nullptr);
+    CHECK(found->value == 9);
+  }
+
+  TEST_CASE("try_get_in_descendant returns a pointer to the matching "
+            "descendant's component") {
+    entt::registry reg;
+    auto root = reg.create();
+    auto mid = reg.create();
+    auto leaf = reg.create();
+    destroy_hierarchy::push_back(reg, root, mid);
+    destroy_hierarchy::push_back(reg, mid, leaf);
+    reg.emplace<marker>(leaf, 5);
+
+    auto *found = destroy_hierarchy::try_get_in_descendant<marker>(reg, root);
+    REQUIRE(found != nullptr);
+    CHECK(found->value == 5);
+  }
+
+  TEST_CASE("try_get_in_parent/child/descendant const overloads compile and "
+            "behave the same as the mutable overloads") {
+    entt::registry reg;
+    auto root = reg.create();
+    auto mid = reg.create();
+    auto leaf = reg.create();
+    destroy_hierarchy::push_back(reg, root, mid);
+    destroy_hierarchy::push_back(reg, mid, leaf);
+    reg.emplace<marker>(root, 3);
+    reg.emplace<marker>(leaf, 4);
+
+    const entt::registry &creg = reg;
+    CHECK(destroy_hierarchy::try_get_in_parent<marker>(creg, leaf)->value == 3);
+    CHECK(destroy_hierarchy::try_get_in_child<marker>(creg, mid)->value == 4);
+    CHECK(destroy_hierarchy::try_get_in_descendant<marker>(creg, root)->value ==
+          4);
+  }
+
+} // TEST_SUITE("component-aware hierarchy queries")
 
 // ---------------------------------------------------------------------------
 // Destruction behavior across all three deletion policies
