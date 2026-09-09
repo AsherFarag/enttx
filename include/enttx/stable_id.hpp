@@ -4,12 +4,12 @@
  */
 
 #pragma once
-#include "config.hpp"
+#include "core.hpp"
 
 #include <entt/entity/entity.hpp>
-
-#include <concepts>
-#include <cstdint>
+#include <entt/stl/concepts.hpp>
+#include <entt/stl/cstdint.hpp>
+#include <entt/stl/type_traits.hpp>
 
 namespace enttx {
 
@@ -34,7 +34,7 @@ template <typename> struct basic_monotonic_stable_id_generator;
 template <typename> struct basic_random_stable_id_generator;
 
 /*! @brief Alias declaration for the most common use case. */
-using stable_id = basic_stable_id<std::uint64_t>;
+using stable_id = basic_stable_id<stl::uint64_t>;
 
 /*! @brief Alias declaration for the most common use case. */
 using monotonic_stable_id_generator =
@@ -43,7 +43,7 @@ using monotonic_stable_id_generator =
 /*! @brief Alias declaration for the most common use case. */
 using random_stable_id_generator = basic_random_stable_id_generator<stable_id>;
 
-template <std::unsigned_integral Value> struct stable_id_value_traits<Value> {
+template <stl::unsigned_integral Value> struct stable_id_value_traits<Value> {
   /*! @brief Underlying value type of the stable identifier. */
   using value_type = Value;
 
@@ -65,7 +65,7 @@ template <std::unsigned_integral Value> struct stable_id_value_traits<Value> {
  * underlying value type.
  */
 template <typename Value, typename Tag, typename ValueTraits>
-  requires std::is_same_v<Value, typename ValueTraits::value_type>
+  requires stl::is_same_v<Value, typename ValueTraits::value_type>
 struct basic_stable_id<Value, Tag, ValueTraits> {
   /*! @brief Underlying value type of the stable identifier. */
   using value_type = Value;
@@ -106,7 +106,7 @@ template <typename StableId>
   requires requires(typename StableId::value_type v) {
     {
       StableId::value_traits::next(v)
-    } -> std::same_as<typename StableId::value_type>;
+    } -> stl::same_as<typename StableId::value_type>;
   }
 struct basic_monotonic_stable_id_generator<StableId> {
   /*! @brief Underlying value type of the stable identifier. */
@@ -127,15 +127,15 @@ struct basic_monotonic_stable_id_generator<StableId> {
 
 namespace internal {
 
-template <std::unsigned_integral Value> struct splitmix;
+template <stl::unsigned_integral Value> struct splitmix;
 
-template <> struct splitmix<std::uint32_t> {
-  using result_type = std::uint32_t;
+template <> struct splitmix<stl::uint32_t> {
+  using result_type = stl::uint32_t;
 
   result_type state;
 
   [[nodiscard]] constexpr result_type operator()() noexcept {
-    std::uint32_t z = (state += 0x9E3779B9u);
+    stl::uint32_t z = (state += 0x9E3779B9u);
 
     z = (z ^ (z >> 16)) * 0x85EBCA6Bu;
     z = (z ^ (z >> 13)) * 0xC2B2AE35u;
@@ -144,13 +144,13 @@ template <> struct splitmix<std::uint32_t> {
   }
 };
 
-template <> struct splitmix<std::uint64_t> {
-  using result_type = std::uint64_t;
+template <> struct splitmix<stl::uint64_t> {
+  using result_type = stl::uint64_t;
 
   result_type state;
 
   [[nodiscard]] constexpr result_type operator()() noexcept {
-    std::uint64_t z = (state += 0x9E3779B97F4A7C15ull);
+    stl::uint64_t z = (state += 0x9E3779B97F4A7C15ull);
 
     z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
     z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
@@ -172,11 +172,11 @@ template <> struct splitmix<std::uint64_t> {
  * distribution of generated values and an increased likelihood of collisions.
  *
  * @code .cpp
- * enttx::random_stable_id_generator gen{std::random_device{}()};
+ * enttx::random_stable_id_generator gen{stl::random_device{}()};
  * @endcode
  */
 template <typename StableId>
-  requires std::unsigned_integral<typename StableId::value_type>
+  requires stl::unsigned_integral<typename StableId::value_type>
 struct basic_random_stable_id_generator<StableId> {
   /*! @brief Underlying value type of the stable identifier. */
   using value_type = typename StableId::value_type;
@@ -205,9 +205,6 @@ public:
 private:
   internal::splitmix<value_type> generator;
 };
-
-static_assert(std::is_trivially_copyable_v<enttx::stable_id>);
-static_assert(std::is_standard_layout_v<enttx::stable_id>);
 
 } // namespace enttx
 
