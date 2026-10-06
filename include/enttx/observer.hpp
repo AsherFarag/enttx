@@ -434,8 +434,8 @@ public:
    * @remark If a segment for the given storage_id already exists, the changes
    * will be appended to it. Otherwise, a new segment will be created.
    */
-  template <typename T, typename Allocator>
-  void append(basic_change_list<T, entity_type, Allocator> &&to_append,
+  template <typename T, typename ChangeAllocator>
+  void append(basic_change_list<T, entity_type, ChangeAllocator> &&to_append,
               const entt::id_type storage_id = entt::type_hash<T>::value()) {
     if (to_append.empty()) {
       return; // No changes to append, exit early.
@@ -588,7 +588,7 @@ public:
   const basic_commit_snapshot &
   get(Archive &archive, EntityHandler &&entity_handler,
       const entt::id_type storage_id = entt::type_hash<T>::value()) const {
-    auto changes = commit->view_changes<T>(storage_id);
+    auto changes = commit->template view_changes<T>(storage_id);
     archive(static_cast<stl::size_t>(changes.size()));
 
     for (const auto &change : changes) {
