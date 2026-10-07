@@ -2,15 +2,17 @@
 
 #include <entt/entity/entity.hpp>
 
+#include <concepts>
+#include <cstdint>
 #include <iostream>
-#include <string>
 #include <sstream>
+#include <string>
+#include <utility>
 
 template<typename T, typename Archive>
 concept has_serialize = requires(Archive& ar, T& value) {
-    { ::serialize(ar, value) } -> std::same_as<void>;
+    { serialize(ar, value) } -> std::same_as<void>;
 };
-
 
 /*! @brief Simple string output archive based on `Cereal` */
 struct output_archive {
@@ -25,7 +27,7 @@ struct output_archive {
     template<typename T>
     requires has_serialize<T, output_archive>
     void operator()(const T& value) {
-        ::serialize(*this, const_cast<T&>(value));
+        serialize(*this, const_cast<T&>(value));
     }
 
     template<typename T, typename... Args>
@@ -59,7 +61,7 @@ struct input_archive {
     template<typename T>
     requires has_serialize<T, input_archive>
     void operator()(T& value) {
-        ::serialize(*this, value);
+        serialize(*this, value);
     }
 
     template<typename T, typename... Args>

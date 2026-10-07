@@ -139,8 +139,4 @@ int main() {
   std::cout << "=== Find entity by stable_id ===\n";
   registry_example();
   std::cout << std::endl;
-
-  // Wait for user input before exiting.
-  std::cout << "Press Enter to exit...";
-  std::cin.get();
 }

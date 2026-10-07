@@ -75,8 +75,4 @@ int main() {
 
   std::cout << "\n=== Updated Hierarchy ===\n";
   print_tree(reg, scene);
-
-  // Wait for user input before exiting.
-  std::cout << "\nPress Enter to exit...";
-  std::cin.get();
 }
