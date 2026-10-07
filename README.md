@@ -72,7 +72,7 @@ int main()
     entt::entity camera = reg.create();
 
     // Automatically adds enttx::hierarchy to `player` and `camera`
-    enttx::hierarchy::attach_child(reg, player, camera);
+    enttx::hierarchy::push_back(reg, player, camera);
 
     // `camera` is now a child of `player`
     // player
@@ -121,6 +121,10 @@ Goblin Chief (inherits Goblin)
 ### Observers `observer.hpp`
 
 ```cpp
+#include <enttx/change_mixin.hpp>
+#include <enttx/observer.hpp>
+#include <entt/entity/registry.hpp>
+
 struct transform {
   float x{0.f}, y{0.f};
 };
