@@ -1,12 +1,4 @@
-include(FetchContent)
-
-FetchContent_Declare(
-    EnTT
-    GIT_REPOSITORY https://github.com/skypjack/entt.git
-    GIT_TAG v4.0.0
-)
-
-FetchContent_MakeAvailable(EnTT)
+include(${PROJECT_SOURCE_DIR}/cmake/doctest/doctest.cmake)
 
 add_executable(EnTTxTests
     main.cpp
@@ -22,6 +14,5 @@ target_link_libraries(EnTTxTests
         EnTT::EnTT
 )
 
-enable_testing()
-
-add_test(NAME EnTTxTests COMMAND EnTTxTests)
+# Register each doctest test case as its own CTest test.
+doctest_discover_tests(EnTTxTests)

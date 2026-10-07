@@ -1,8 +1,20 @@
 cmake_minimum_required(VERSION 3.28)
 
+# Read the version from config.hpp so it has a single source of truth.
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/include/enttx/config.hpp" ENTTX_CONFIG_HPP)
+
+foreach(ENTTX_VERSION_PART MAJOR MINOR PATCH)
+    string(
+        REGEX MATCH "#define ENTTX_VERSION_${ENTTX_VERSION_PART} ([0-9]+)"
+        _ "${ENTTX_CONFIG_HPP}"
+    )
+    set(ENTTX_VERSION_${ENTTX_VERSION_PART} "${CMAKE_MATCH_1}")
+endforeach()
+
 project(
     EnTTx
-    VERSION 0.1.0
+    VERSION ${ENTTX_VERSION_MAJOR}.${ENTTX_VERSION_MINOR}.${ENTTX_VERSION_PATCH}
     DESCRIPTION "Extensions for EnTT"
     HOMEPAGE_URL "https://github.com/AsherFarag/enttx"
     LANGUAGES CXX
@@ -65,11 +77,24 @@ endif()
 
 include(cmake/ClangFormat.cmake)
 
+# Dependencies for tests and examples
+
+if(ENTTX_BUILD_TESTING OR ENTTX_BUILD_EXAMPLES)
+    include(FetchContent)
+
+    FetchContent_Declare(
+        EnTT
+        GIT_REPOSITORY https://github.com/skypjack/entt.git
+        GIT_TAG v4.0.0
+    )
+
+    FetchContent_MakeAvailable(EnTT)
+endif()
+
 # Tests
 
 if(ENTTX_BUILD_TESTING)
     include(CTest)
-    enable_testing()
     add_subdirectory(tests)
 endif()
 

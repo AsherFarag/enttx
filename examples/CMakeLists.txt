@@ -1,13 +1,3 @@
-include(FetchContent)
-
-FetchContent_Declare(
-    EnTT
-    GIT_REPOSITORY https://github.com/skypjack/entt.git
-    GIT_TAG v4.0.0
-)
-
-FetchContent_MakeAvailable(EnTT)
-
 # hierarchy_example
 
 add_executable(hierarchy_example
@@ -55,3 +45,16 @@ target_link_libraries(observer_example
         EnTTx
         EnTT::EnTT
 )
+
+# Run each example as a test, so a crash or failed assert fails CI.
+
+if(ENTTX_BUILD_TESTING)
+    foreach(ENTTX_EXAMPLE
+        hierarchy_example
+        prefab_example
+        stable_id_example
+        observer_example
+    )
+        add_test(NAME ${ENTTX_EXAMPLE} COMMAND ${ENTTX_EXAMPLE})
+    endforeach()
+endif()
