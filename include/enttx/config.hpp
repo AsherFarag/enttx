@@ -7,7 +7,7 @@
 
 #define ENTTX_VERSION_MAJOR 1
 #define ENTTX_VERSION_MINOR 2
-#define ENTTX_VERSION_PATCH 0
+#define ENTTX_VERSION_PATCH 1
 
 #define ENTTX_VERSION                                                          \
   ENTTX_XSTR(ENTTX_VERSION_MAJOR)                                              \
