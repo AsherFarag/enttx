@@ -757,3 +757,126 @@ TEST_CASE(
   CHECK_FALSE(nz == entt::null);
   CHECK_FALSE(entt::null == nz);
 }
+
+
+// ===========================================================================
+// Regression tests
+// ===========================================================================
+
+TEST_CASE("entity_ref: a reference authored at two levels is remapped once") {
+  fixture f;
+  const prefab_id base = 1;
+  const prefab_id derived = 2;
+  const node_id root = f.reg.create_prefab(base);
+  const node_id child = f.reg.add_child(base, root);
+  const entt::entity child_ae = f.reg.get_node_entity(base, child);
+
+  f.reg.emplace<entity_ref>(base, root, entity_ref{child_ae});
+  f.reg.create_prefab(derived, base);
+  f.reg.emplace<entity_ref>(derived, root, entity_ref{child_ae});
+
+  // Offset target entities from def_reg ones, so a second remap of an
+  // already-translated entity can't land on a valid key by coincidence.
+  for (int i = 0; i < 64; ++i) {
+    static_cast<void>(f.target.create());
+  }
+
+  const entt::entity e = f.reg.instantiate(derived, f.target);
+  const entt::entity expected = f.target.get<hierarchy>(e).first_child;
+
+  REQUIRE(expected != entt::null);
+  CHECK(f.target.get<entity_ref>(e).target == expected);
+}
+
+TEST_CASE("entity_ref: a derived level can remove an inherited remappable "
+          "component") {
+  fixture f;
+  const prefab_id base = 1;
+  const prefab_id derived = 2;
+  const node_id root = f.reg.create_prefab(base);
+  const node_id child = f.reg.add_child(base, root);
+
+  f.reg.emplace<entity_ref>(base, root,
+                            entity_ref{f.reg.get_node_entity(base, child)});
+  f.reg.create_prefab(derived, base);
+  f.reg.remove<entity_ref>(derived, root);
+
+  const entt::entity e = f.reg.instantiate(derived, f.target);
+
+  CHECK_FALSE(f.target.all_of<entity_ref>(e));
+}
+
+TEST_CASE("rebuild_cache: new nodes don't reuse ids already in def_reg") {
+  fixture f;
+  const prefab_id id = 1;
+  const node_id root = f.reg.create_prefab(id);
+  const node_id child = f.reg.add_child(id, root);
+  f.reg.emplace<name_tag>(id, child, name_tag{"child"});
+
+  // A fresh prefab registry over the same def_reg, as after loading from
+  // disk.
+  prefab_registry reloaded{f.def_reg};
+  reloaded.rebuild_cache();
+
+  const node_id added = reloaded.add_child(id, root);
+  CHECK(added != root);
+  CHECK(added != child);
+  reloaded.emplace<name_tag>(id, added, name_tag{"added"});
+
+  const entt::entity e = reloaded.instantiate(id, f.target);
+  std::vector<std::string> names;
+  hierarchy::for_each_child(f.target, e, [&](entt::entity c) {
+    names.push_back(f.target.get<name_tag>(c).name);
+  });
+  CHECK(names == std::vector<std::string>{"child", "added"});
+}
+
+TEST_CASE("create_prefab: new nodes don't reuse the root_hint id") {
+  fixture f;
+  const prefab_id id = 1;
+  const node_id root = f.reg.create_prefab(id, entt::null, node_id{1});
+
+  const node_id child = f.reg.add_child(id, root);
+  CHECK(child != root);
+}
+
+TEST_CASE("clear: destroys every authoring entity, not only prefab roots") {
+  fixture f;
+  const prefab_id base = 1;
+  const prefab_id derived = 2;
+  const node_id root = f.reg.create_prefab(base);
+  const node_id child = f.reg.add_child(base, root);
+  f.reg.add_child(base, child);
+  f.reg.create_prefab(derived, base);
+  f.reg.emplace<health>(derived, child, 5);
+
+  f.reg.clear();
+
+  std::size_t alive = 0;
+  f.def_reg.view<entt::entity>().each([&](entt::entity) { ++alive; });
+  CHECK(alive == 0);
+
+  // The registry is still usable afterwards.
+  const node_id new_root = f.reg.create_prefab(base);
+  f.reg.emplace<health>(base, new_root, 1);
+  CHECK(has_value(f.target, f.reg.instantiate(base, f.target), health{1}));
+}
+
+TEST_CASE("rebuild_cache: picks up components changed directly on def_reg") {
+  fixture f;
+  const prefab_id id = 1;
+  const node_id root = f.reg.create_prefab(id);
+  f.reg.emplace<health>(id, root, 10);
+  f.reg.emplace<position>(id, root, 1.f, 1.f);
+
+  const entt::entity ae = f.reg.get_root_node_entity(id);
+  f.def_reg.remove<position>(ae);
+  f.def_reg.emplace<name_tag>(ae, name_tag{"direct"});
+  f.reg.register_ops<name_tag>();
+  f.reg.rebuild_cache();
+
+  const entt::entity e = f.reg.instantiate(id, f.target);
+  CHECK(has_value(f.target, e, health{10}));
+  CHECK(has_value(f.target, e, name_tag{"direct"}));
+  CHECK_FALSE(f.target.all_of<position>(e));
+}

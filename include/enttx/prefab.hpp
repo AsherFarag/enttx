@@ -77,6 +77,10 @@ static basic_component_ops<Registry> get_component_ops() {
 
   static auto copy = +[](const registry_type &src, entity_type se,
                          registry_type &dst, entity_type de) {
+    if (!src.template all_of<T>(se)) {
+      return; // removed from def_reg directly, without rebuild_cache().
+    }
+
     if constexpr (is_pageless<T, entity_type>) {
       dst.template emplace_or_replace<T>(de);
     } else {
@@ -98,7 +102,10 @@ static basic_component_ops<Registry> get_component_ops() {
   if constexpr (is_remappable<T, Registry, entity_remap>) {
     ops.remap =
         +[](registry_type &reg, entity_type e, const entity_remap &remap) {
-          remap_traits<T>::remap(reg, e, remap);
+          // A more-derived level may have removed the component again.
+          if (reg.template all_of<T>(e)) {
+            remap_traits<T>::remap(reg, e, remap);
+          }
         };
   }
 
@@ -117,6 +124,15 @@ static basic_component_ops<Registry> get_component_ops() {
  */
 struct removed_components {
   entt::dense_set<entt::id_type> types;
+};
+
+/*!
+ * @brief The component types authored on a single authoring entity, in the
+ * order they were first authored. Lets instantiate visit only these types
+ * instead of every storage in the definition registry.
+ */
+struct authored_components {
+  stl::vector<entt::id_type> types;
 };
 
 /*!
@@ -233,6 +249,7 @@ public:
       root = def_reg.template get<node_id>(base_entity);
     } else {
       root = (root_hint != entt::null) ? root_hint : id_gen_();
+      reserve_node_id(root);
     }
 
     const entity_type e = ensure_authoring(id, root);
@@ -286,8 +303,18 @@ public:
     const entity_type e = ensure_authoring(prefab, node);
     mark_authored(e);
 
+    constexpr entt::id_type type = entt::type_hash<T>::value();
+
     if (auto *rc = def_reg.template try_get<removed_components>(e)) {
-      rc->types.erase(entt::type_hash<T>::value());
+      rc->types.erase(type);
+    }
+
+    auto &authored =
+        def_reg.template get_or_emplace<authored_components>(e).types;
+    if (stl::find_if(authored.begin(), authored.end(), [type](const auto id) {
+          return id == type;
+        }) == authored.end()) {
+      authored.push_back(type);
     }
 
     return def_reg.template emplace_or_replace<T>(e,
@@ -302,9 +329,14 @@ public:
     const entity_type e = ensure_authoring(prefab, node);
     mark_authored(e);
 
+    constexpr entt::id_type type = entt::type_hash<T>::value();
+
     def_reg.template remove<T>(e);
-    def_reg.template get_or_emplace<removed_components>(e).types.insert(
-        entt::type_hash<T>::value());
+    def_reg.template get_or_emplace<removed_components>(e).types.insert(type);
+
+    if (auto *ac = def_reg.template try_get<authored_components>(e)) {
+      std::erase(ac->types, type);
+    }
   }
 
   /*! @brief Explicitly deletes an inherited child (and its subtree) at this
@@ -335,9 +367,14 @@ public:
 
   /*! @brief Destroys all prefab definitions. */
   void clear() {
-    for (const auto &[id, e] : prefab_entities_) {
-      if (def_reg.valid(e)) {
-        def_reg.destroy(e);
+    // Every authoring entity, prefab asset entities included, is tracked in
+    // node_authoring_. Some may already be gone, since destroying a base
+    // prefab's asset entity also destroys its derived ones.
+    for (const auto &[prefab, nodes] : node_authoring_) {
+      for (const auto &[node, e] : nodes) {
+        if (def_reg.valid(e)) {
+          def_reg.destroy(e);
+        }
       }
     }
 
@@ -366,9 +403,10 @@ public:
     for (auto [root_entity, pid] :
          def_reg.template view<enttx::prefab_id>().each()) {
 
-      auto traverse_and_rebuild = [&](entt::entity curr, auto &self) -> void {
+      auto traverse_and_rebuild = [&](entity_type curr, auto &self) -> void {
         enttx::node_id curr_id = def_reg.template get<enttx::node_id>(curr);
         node_authoring_[pid][curr_id] = curr;
+        reserve_node_id(curr_id);
 
         // Rebuild node_parent_
         if (const auto *auth =
@@ -383,11 +421,13 @@ public:
         // TODO: Possible to run out of stack here if prefab is very deep, move
         // to temp alloc buffers instead
         authoring_hierarchy::for_each_child(
-            def_reg, curr, [&](entt::entity child) { self(child, self); });
+            def_reg, curr, [&](entity_type child) { self(child, self); });
       };
 
       traverse_and_rebuild(root_entity, traverse_and_rebuild);
     }
+
+    rebuild_authored_components();
   }
 
   // ------------------------------------------------------------- Instantiate
@@ -580,6 +620,47 @@ protected:
   entt::dense_map<prefab_id, entt::dense_map<node_id, entity_type>>
       node_authoring_;
 
+  /*! @brief Rebuilds every authoring entity's authored_components from the
+   * storages in def_reg. Types without registered ops are recorded too, and
+   * skipped at instantiate time, so ops can be registered afterwards. */
+  void rebuild_authored_components() {
+    // Fetch (and create) both storages up front: creating a storage while
+    // iterating def_reg.storage() below would invalidate the iteration.
+    auto &authored = def_reg.template storage<authored_components>();
+    const auto &nodes = def_reg.template storage<node_id>();
+    authored.clear();
+
+    const entt::id_type skip[]{
+        entt::type_hash<authored_components>::value(),
+        entt::type_hash<entity_type>::value(),
+    };
+
+    for (auto &&[id, storage] : def_reg.storage()) {
+      if (stl::find_if(std::begin(skip), std::end(skip), [id](const auto s) {
+            return s == id;
+          }) != std::end(skip)) {
+        continue;
+      }
+
+      for (const entity_type e : storage) {
+        if (nodes.contains(e)) {
+          if (!authored.contains(e)) {
+            authored.emplace(e);
+          }
+          authored.get(e).types.push_back(id);
+        }
+      }
+    }
+  }
+
+  /*! @brief Advances the node id generator past `node`, so that it never
+   * hands out an id that is already in use. */
+  void reserve_node_id(const node_id node) {
+    if (node.value > id_gen_.current) {
+      id_gen_.current = node.value;
+    }
+  }
+
   void mark_authored(const entity_type e) {
     def_reg.template remove<unauthored_tag>(e);
   }
@@ -624,8 +705,8 @@ protected:
   void
   apply_remap(registry_type &target, const entity_remap_type &remap,
               std::span<const stl::pair<entt::id_type, entity_type>> touched) {
-    // TODO: Currently an entity can get remapped multiple times from overrides.
-    // For now its fine but could be optimized.
+    // collapse_node records each (component, entity) pair once, as remapping
+    // an already-remapped entity would translate it to entt::null.
     for (const auto &[id, te] : touched) {
       if (const auto it = component_ops.find(id);
           it != component_ops.end() && it->second.remap) {
@@ -670,6 +751,10 @@ protected:
 
     prefab_id nested = entt::null;
 
+    // Entries for this node start here. A component authored at several levels
+    // is copied once per level but must only be recorded (and remapped) once.
+    const auto node_touched_begin = touched.size();
+
     // chain is derived-to-base, but we want to apply overrides from
     // base-to-derived, so iterate in reverse.
     for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
@@ -693,18 +778,22 @@ protected:
       }
 
       // Copy every component this level explicitly authored on the node.
-      for (auto &&curr : def_reg.storage()) {
-        auto &&[id, storage] = curr;
-        if (!storage.contains(ae)) {
-          continue; // this level doesn't author this component, skip.
-        }
-        const auto it = component_ops.find(id);
-        if (it == component_ops.end()) {
-          continue; // unregistered (internal bookkeeping type), skip.
-        }
+      if (const auto *ac = def_reg.template try_get<authored_components>(ae)) {
+        for (const entt::id_type id : ac->types) {
+          const auto it = component_ops.find(id);
+          if (it == component_ops.end()) {
+            continue; // unregistered (internal bookkeeping type), skip.
+          }
 
-        it->second.copy(def_reg, ae, target, te);
-        touched.emplace_back(id, te);
+          it->second.copy(def_reg, ae, target, te);
+
+          const auto first = touched.begin() + node_touched_begin;
+          if (stl::find_if(first, touched.end(), [id](const auto &entry) {
+                return entry.first == id;
+              }) == touched.end()) {
+            touched.emplace_back(id, te);
+          }
+        }
       }
 
       if (def_reg.template all_of<nested_prefab_ref>(ae)) {
