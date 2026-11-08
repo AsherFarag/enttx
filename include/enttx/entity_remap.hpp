@@ -12,20 +12,18 @@ namespace enttx {
 
 /*! @brief Checks if T is a valid remapper (functor that takes in a entity and
  * returns an entity) */
-template <typename T, typename Registry = entt::registry>
+template<typename T, typename Registry = entt::registry>
 concept is_entity_remapper =
     requires(const T &remapper, typename Registry::entity_type e) {
-      { remapper(e) } -> stl::same_as<typename Registry::entity_type>;
+        { remapper(e) } -> stl::same_as<typename Registry::entity_type>;
     };
 
 /*! @brief Checks if a type T has a static member function `remap` satisfying
  * the expected signature. */
-template <typename T, typename Registry, typename Remapper>
+template<typename T, typename Registry, typename Remapper>
 concept has_member_remap =
-    is_entity_remapper<Remapper, Registry> &&
-    requires(Registry &reg, typename Registry::entity_type e,
-             const Remapper &remap) {
-      { T::remap(reg, e, remap) } -> stl::same_as<void>;
+    is_entity_remapper<Remapper, Registry> && requires(Registry &reg, typename Registry::entity_type e, const Remapper &remap) {
+        { T::remap(reg, e, remap) } -> stl::same_as<void>;
     };
 
 /*!
@@ -36,22 +34,21 @@ concept has_member_remap =
  * Specialize this type to provide a custom implementation of remap for a
  * specific type T.
  */
-template <typename T> struct remap_traits {
-  template <typename Registry, typename Remapper>
+template<typename T>
+struct remap_traits {
+    template<typename Registry, typename Remapper>
     requires has_member_remap<T, Registry, Remapper>
-  static void remap(Registry &reg, typename Registry::entity_type e,
-                    const Remapper &remapper) {
-    T::remap(reg, e, remapper);
-  }
+    static void remap(Registry &reg, typename Registry::entity_type e,
+                      const Remapper &remapper) {
+        T::remap(reg, e, remapper);
+    }
 };
 
 /*! @brief Checks if a type T has a valid `remap_traits` specialization. */
-template <typename T, typename Registry, typename Remapper>
+template<typename T, typename Registry, typename Remapper>
 concept is_remappable =
-    is_entity_remapper<Remapper, Registry> &&
-    requires(Registry &reg, typename Registry::entity_type e,
-             const Remapper &remapper) {
-      { remap_traits<T>::remap(reg, e, remapper) } -> stl::same_as<void>;
+    is_entity_remapper<Remapper, Registry> && requires(Registry &reg, typename Registry::entity_type e, const Remapper &remapper) {
+        { remap_traits<T>::remap(reg, e, remapper) } -> stl::same_as<void>;
     };
 
 /*!
@@ -65,38 +62,38 @@ concept is_remappable =
  * // remapped_entity == new_entity
  * @endcode
  */
-template <std::equality_comparable_with<entt::null_t> Key, typename Value = Key>
+template<std::equality_comparable_with<entt::null_t> Key, typename Value = Key>
 struct basic_entity_remap final {
-  /*! @brief Key type used for retrieving a value. */
-  using key_type = Key;
-  /*! @brief Value type stored in the remap. */
-  using value_type = Value;
+    /*! @brief Key type used for retrieving a value. */
+    using key_type = Key;
+    /*! @brief Value type stored in the remap. */
+    using value_type = Value;
 
-  /*! @brief Maps a key to a value. */
-  basic_entity_remap &map(const key_type key, const value_type value) {
-    entt_map[key] = value;
-    return *this;
-  }
-
-  /*! @brief Removes a key-value mapping. */
-  basic_entity_remap &unmap(const key_type key) {
-    entt_map.erase(key);
-    return *this;
-  }
-
-  /*! @brief Remaps a key to its corresponding value. If the key is not found,
-   * returns entt::null. */
-  [[nodiscard]] value_type operator()(const key_type key) const noexcept {
-    if (key == entt::null) {
-      return entt::null;
+    /*! @brief Maps a key to a value. */
+    basic_entity_remap &map(const key_type key, const value_type value) {
+        entt_map[key] = value;
+        return *this;
     }
-    if (auto it = entt_map.find(key); it != entt_map.end()) {
-      return it->second;
-    }
-    return entt::null;
-  }
 
-  entt::dense_map<key_type, value_type> entt_map;
+    /*! @brief Removes a key-value mapping. */
+    basic_entity_remap &unmap(const key_type key) {
+        entt_map.erase(key);
+        return *this;
+    }
+
+    /*! @brief Remaps a key to its corresponding value. If the key is not found,
+     * returns entt::null. */
+    [[nodiscard]] value_type operator()(const key_type key) const noexcept {
+        if(key == entt::null) {
+            return entt::null;
+        }
+        if(auto it = entt_map.find(key); it != entt_map.end()) {
+            return it->second;
+        }
+        return entt::null;
+    }
+
+    entt::dense_map<key_type, value_type> entt_map;
 };
 
 /*! @brief Alias declaration for the most common use case. */

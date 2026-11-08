@@ -4,8 +4,8 @@
  */
 
 #pragma once
-#include "config.hpp"
 #include <entt/entity/component.hpp>
+#include "config.hpp"
 
 namespace enttx {
 
@@ -21,6 +21,6 @@ namespace stl = entt::stl;
  * optimizing operations on such components, but requires special handling when
  * accessing them.
  */
-template <typename T, typename Entity = entt::entity>
+template<typename T, typename Entity = entt::entity>
 concept is_pageless = entt::component_traits<T, Entity>::page_size == 0u;
 } // namespace enttx
