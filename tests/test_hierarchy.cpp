@@ -32,26 +32,26 @@ using unhandled_hierarchy =
 
 // Collects the direct children of `parent` via the forward
 // child_iterator/children_view.
-template <typename Hierarchy>
+template<typename Hierarchy>
 std::vector<typename Hierarchy::entity_type>
 collect_children(const entt::registry &reg, entt::entity parent) {
-  std::vector<typename Hierarchy::entity_type> out;
-  for (auto c : Hierarchy::children(reg, parent)) {
-    out.push_back(c);
-  }
-  return out;
+    std::vector<typename Hierarchy::entity_type> out;
+    for(auto c: Hierarchy::children(reg, parent)) {
+        out.push_back(c);
+    }
+    return out;
 }
 
 // Collects the direct children of `parent` in reverse order via rbegin/rend.
-template <typename Hierarchy>
+template<typename Hierarchy>
 std::vector<typename Hierarchy::entity_type>
 collect_children_reverse(const entt::registry &reg, entt::entity parent) {
-  std::vector<typename Hierarchy::entity_type> out;
-  auto view = Hierarchy::children(reg, parent);
-  for (auto it = view.rbegin(); it != view.rend(); ++it) {
-    out.push_back(*it);
-  }
-  return out;
+    std::vector<typename Hierarchy::entity_type> out;
+    auto view = Hierarchy::children(reg, parent);
+    for(auto it = view.rbegin(); it != view.rend(); ++it) {
+        out.push_back(*it);
+    }
+    return out;
 }
 
 } // namespace
@@ -61,265 +61,254 @@ collect_children_reverse(const entt::registry &reg, entt::entity parent) {
 // ---------------------------------------------------------------------------
 
 TEST_SUITE("insertion") {
+    TEST_CASE("push_back appends children in order and updates child_count") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto c3 = reg.create();
 
-  TEST_CASE("push_back appends children in order and updates child_count") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto c3 = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::push_back(reg, parent, c3);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-    destroy_hierarchy::push_back(reg, parent, c3);
+        auto &ph = reg.get<destroy_hierarchy>(parent);
+        CHECK(ph.child_count == 3);
+        CHECK(ph.first_child == c1);
+        CHECK(ph.last_child == c3);
+        CHECK(ph.has_children() == true);
 
-    auto &ph = reg.get<destroy_hierarchy>(parent);
-    CHECK(ph.child_count == 3);
-    CHECK(ph.first_child == c1);
-    CHECK(ph.last_child == c3);
-    CHECK(ph.has_children() == true);
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c1, c2, c3});
+    }
 
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c1, c2, c3});
-  }
+    TEST_CASE("push_front prepends children in reverse insertion order") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto c3 = reg.create();
 
-  TEST_CASE("push_front prepends children in reverse insertion order") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto c3 = reg.create();
+        destroy_hierarchy::push_front(reg, parent, c1);
+        destroy_hierarchy::push_front(reg, parent, c2);
+        destroy_hierarchy::push_front(reg, parent, c3);
 
-    destroy_hierarchy::push_front(reg, parent, c1);
-    destroy_hierarchy::push_front(reg, parent, c2);
-    destroy_hierarchy::push_front(reg, parent, c3);
+        auto &ph = reg.get<destroy_hierarchy>(parent);
+        CHECK(ph.child_count == 3);
+        CHECK(ph.first_child == c3);
+        CHECK(ph.last_child == c1);
 
-    auto &ph = reg.get<destroy_hierarchy>(parent);
-    CHECK(ph.child_count == 3);
-    CHECK(ph.first_child == c3);
-    CHECK(ph.last_child == c1);
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c3, c2, c1});
+    }
 
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c3, c2, c1});
-  }
+    TEST_CASE("push_back and push_front correctly set parent link and sibling "
+              "pointers") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
 
-  TEST_CASE("push_back and push_front correctly set parent link and sibling "
-            "pointers") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
+        auto &h1 = reg.get<destroy_hierarchy>(c1);
+        auto &h2 = reg.get<destroy_hierarchy>(c2);
 
-    auto &h1 = reg.get<destroy_hierarchy>(c1);
-    auto &h2 = reg.get<destroy_hierarchy>(c2);
+        CHECK(h1.parent == parent);
+        CHECK(h2.parent == parent);
+        CHECK(h1.prev_sibling == entt::null);
+        CHECK(h1.next_sibling == c2);
+        CHECK(h2.prev_sibling == c1);
+        CHECK(h2.next_sibling == entt::null);
+    }
 
-    CHECK(h1.parent == parent);
-    CHECK(h2.parent == parent);
-    CHECK(h1.prev_sibling == entt::null);
-    CHECK(h1.next_sibling == c2);
-    CHECK(h2.prev_sibling == c1);
-    CHECK(h2.next_sibling == entt::null);
-  }
+    TEST_CASE("push_back auto-creates hierarchy component for parent and child "
+              "(get_or_emplace)") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto child = reg.create();
 
-  TEST_CASE("push_back auto-creates hierarchy component for parent and child "
-            "(get_or_emplace)") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto child = reg.create();
+        REQUIRE_FALSE(reg.all_of<destroy_hierarchy>(parent));
+        REQUIRE_FALSE(reg.all_of<destroy_hierarchy>(child));
 
-    REQUIRE_FALSE(reg.all_of<destroy_hierarchy>(parent));
-    REQUIRE_FALSE(reg.all_of<destroy_hierarchy>(child));
+        destroy_hierarchy::push_back(reg, parent, child);
 
-    destroy_hierarchy::push_back(reg, parent, child);
+        CHECK(reg.all_of<destroy_hierarchy>(parent));
+        CHECK(reg.all_of<destroy_hierarchy>(child));
+    }
 
-    CHECK(reg.all_of<destroy_hierarchy>(parent));
-    CHECK(reg.all_of<destroy_hierarchy>(child));
-  }
+    TEST_CASE("re-parenting a child updates the old parent's child_count") {
+        entt::registry reg;
+        auto parentA = reg.create();
+        auto parentB = reg.create();
+        auto child = reg.create();
 
-  TEST_CASE("re-parenting a child updates the old parent's child_count") {
-    entt::registry reg;
-    auto parentA = reg.create();
-    auto parentB = reg.create();
-    auto child = reg.create();
+        destroy_hierarchy::push_back(reg, parentA, child);
+        CHECK(reg.get<destroy_hierarchy>(parentA).child_count == 1);
 
-    destroy_hierarchy::push_back(reg, parentA, child);
-    CHECK(reg.get<destroy_hierarchy>(parentA).child_count == 1);
+        destroy_hierarchy::push_back(reg, parentB, child);
 
-    destroy_hierarchy::push_back(reg, parentB, child);
+        CHECK(reg.get<destroy_hierarchy>(parentA).child_count == 0);
+        CHECK(reg.get<destroy_hierarchy>(parentB).child_count == 1);
+        CHECK(reg.get<destroy_hierarchy>(child).parent == parentB);
+    }
 
-    CHECK(reg.get<destroy_hierarchy>(parentA).child_count == 0);
-    CHECK(reg.get<destroy_hierarchy>(parentB).child_count == 1);
-    CHECK(reg.get<destroy_hierarchy>(child).parent == parentB);
-  }
+    TEST_CASE("null and self-parenting arguments are safely ignored") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto child = reg.create();
 
-  TEST_CASE("null and self-parenting arguments are safely ignored") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto child = reg.create();
+        // parent == child should be a no-op
+        destroy_hierarchy::push_back(reg, child, child);
+        CHECK_FALSE(reg.all_of<destroy_hierarchy>(child));
 
-    // parent == child should be a no-op
-    destroy_hierarchy::push_back(reg, child, child);
-    CHECK_FALSE(reg.all_of<destroy_hierarchy>(child));
+        // entt::null as either argument should be a no-op
+        destroy_hierarchy::push_back(reg, entt::null, child);
+        destroy_hierarchy::push_back(reg, parent, entt::entity(entt::null));
+        CHECK_FALSE(reg.all_of<destroy_hierarchy>(child));
+        CHECK_FALSE(reg.all_of<destroy_hierarchy>(parent));
+    }
 
-    // entt::null as either argument should be a no-op
-    destroy_hierarchy::push_back(reg, entt::null, child);
-    destroy_hierarchy::push_back(reg, parent, entt::entity(entt::null));
-    CHECK_FALSE(reg.all_of<destroy_hierarchy>(child));
-    CHECK_FALSE(reg.all_of<destroy_hierarchy>(parent));
-  }
+    TEST_CASE("insert_before places a child immediately before a sibling") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto newChild = reg.create();
 
-  TEST_CASE("insert_before places a child immediately before a sibling") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto newChild = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::insert_before(reg, /*before=*/c2, /*child=*/newChild);
 
-    destroy_hierarchy::insert_before(reg, /*before=*/c2, /*child=*/newChild);
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c1, newChild, c2});
+        CHECK(reg.get<destroy_hierarchy>(parent).child_count == 3);
+    }
 
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c1, newChild, c2});
-    CHECK(reg.get<destroy_hierarchy>(parent).child_count == 3);
-  }
+    TEST_CASE(
+        "insert_before as the new first child updates parent's first_child") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto newChild = reg.create();
 
-  TEST_CASE(
-      "insert_before as the new first child updates parent's first_child") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto newChild = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::insert_before(reg, c1, newChild);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::insert_before(reg, c1, newChild);
+        CHECK(reg.get<destroy_hierarchy>(parent).first_child == newChild);
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{newChild, c1});
+    }
 
-    CHECK(reg.get<destroy_hierarchy>(parent).first_child == newChild);
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{newChild, c1});
-  }
+    TEST_CASE("insert_after places a child immediately after a sibling") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto newChild = reg.create();
 
-  TEST_CASE("insert_after places a child immediately after a sibling") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto newChild = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::insert_after(reg, /*after=*/c1, /*child=*/newChild);
 
-    destroy_hierarchy::insert_after(reg, /*after=*/c1, /*child=*/newChild);
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c1, newChild, c2});
+    }
 
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c1, newChild, c2});
-  }
+    TEST_CASE("insert_after as the new last child updates parent's last_child") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto newChild = reg.create();
 
-  TEST_CASE("insert_after as the new last child updates parent's last_child") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto newChild = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::insert_after(reg, c1, newChild);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::insert_after(reg, c1, newChild);
+        CHECK(reg.get<destroy_hierarchy>(parent).last_child == newChild);
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c1, newChild});
+    }
 
-    CHECK(reg.get<destroy_hierarchy>(parent).last_child == newChild);
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c1, newChild});
-  }
+    TEST_CASE(
+        "insert_before/insert_after with a node that has no parent is a no-op") {
+        entt::registry reg;
+        auto orphanAnchor = reg.create();
+        auto child = reg.create();
 
-  TEST_CASE(
-      "insert_before/insert_after with a node that has no parent is a no-op") {
-    entt::registry reg;
-    auto orphanAnchor = reg.create();
-    auto child = reg.create();
+        // Give `orphanAnchor` a hierarchy component with no parent by making it a
+        // parent of something else (so it has the component) but never attaching
+        // it to a parent itself.
+        auto someChild = reg.create();
+        destroy_hierarchy::push_back(reg, orphanAnchor, someChild);
+        REQUIRE(reg.get<destroy_hierarchy>(orphanAnchor).parent == entt::null);
 
-    // Give `orphanAnchor` a hierarchy component with no parent by making it a
-    // parent of something else (so it has the component) but never attaching
-    // it to a parent itself.
-    auto someChild = reg.create();
-    destroy_hierarchy::push_back(reg, orphanAnchor, someChild);
-    REQUIRE(reg.get<destroy_hierarchy>(orphanAnchor).parent == entt::null);
+        destroy_hierarchy::insert_before(reg, orphanAnchor, child);
+        CHECK_FALSE(reg.all_of<destroy_hierarchy>(child));
 
-    destroy_hierarchy::insert_before(reg, orphanAnchor, child);
-    CHECK_FALSE(reg.all_of<destroy_hierarchy>(child));
+        destroy_hierarchy::insert_after(reg, orphanAnchor, child);
+        CHECK_FALSE(reg.all_of<destroy_hierarchy>(child));
+    }
 
-    destroy_hierarchy::insert_after(reg, orphanAnchor, child);
-    CHECK_FALSE(reg.all_of<destroy_hierarchy>(child));
-  }
+    TEST_CASE("moving a child via insert_before/insert_after within the same "
+              "parent reorders correctly") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto c3 = reg.create();
 
-  TEST_CASE("moving a child via insert_before/insert_after within the same "
-            "parent reorders correctly") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto c3 = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::push_back(reg, parent, c3);
+        REQUIRE(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c1, c2, c3});
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-    destroy_hierarchy::push_back(reg, parent, c3);
-    REQUIRE(collect_children<destroy_hierarchy>(reg, parent) ==
-            std::vector<entt::entity>{c1, c2, c3});
+        // Move c3 to the front.
+        destroy_hierarchy::insert_before(reg, c1, c3);
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c3, c1, c2});
+        CHECK(reg.get<destroy_hierarchy>(parent).child_count == 3);
 
-    // Move c3 to the front.
-    destroy_hierarchy::insert_before(reg, c1, c3);
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c3, c1, c2});
-    CHECK(reg.get<destroy_hierarchy>(parent).child_count == 3);
+        // Move c1 to the end.
+        destroy_hierarchy::insert_after(reg, c2, c1);
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c3, c2, c1});
+        CHECK(reg.get<destroy_hierarchy>(parent).child_count == 3);
+    }
 
-    // Move c1 to the end.
-    destroy_hierarchy::insert_after(reg, c2, c1);
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c3, c2, c1});
-    CHECK(reg.get<destroy_hierarchy>(parent).child_count == 3);
-  }
+    TEST_CASE(
+        "insert_before/insert_after reject null and self-referential arguments") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
 
-  TEST_CASE(
-      "insert_before/insert_after reject null and self-referential arguments") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::insert_before(reg, c1, c1); // before == child
+        CHECK(reg.get<destroy_hierarchy>(parent).child_count == 1);
 
-    destroy_hierarchy::insert_before(reg, c1, c1); // before == child
-    CHECK(reg.get<destroy_hierarchy>(parent).child_count == 1);
+        destroy_hierarchy::insert_after(reg, c1, c1); // after == child
+        CHECK(reg.get<destroy_hierarchy>(parent).child_count == 1);
 
-    destroy_hierarchy::insert_after(reg, c1, c1); // after == child
-    CHECK(reg.get<destroy_hierarchy>(parent).child_count == 1);
+        destroy_hierarchy::insert_before(reg, entt::null, c1);
+        destroy_hierarchy::insert_after(reg, entt::null, c1);
+        CHECK(reg.get<destroy_hierarchy>(parent).child_count == 1);
+    }
 
-    destroy_hierarchy::insert_before(reg, entt::null, c1);
-    destroy_hierarchy::insert_after(reg, entt::null, c1);
-    CHECK(reg.get<destroy_hierarchy>(parent).child_count == 1);
-  }
+    TEST_CASE("is_descendant prevents creating a cycle via "
+              "push_back/push_front/insert_*") {
+        entt::registry reg;
+        auto grandparent = reg.create();
+        auto parent = reg.create();
+        auto child = reg.create();
 
-  TEST_CASE("is_descendant prevents creating a cycle via "
-            "push_back/push_front/insert_*") {
-    entt::registry reg;
-    auto grandparent = reg.create();
-    auto parent = reg.create();
-    auto child = reg.create();
+        destroy_hierarchy::push_back(reg, grandparent, parent);
+        destroy_hierarchy::push_back(reg, parent, child);
 
-    destroy_hierarchy::push_back(reg, grandparent, parent);
-    destroy_hierarchy::push_back(reg, parent, child);
+        CHECK(destroy_hierarchy::is_descendant(reg, child, grandparent) == true);
+        CHECK(destroy_hierarchy::is_descendant(reg, parent, grandparent) == true);
+        CHECK(destroy_hierarchy::is_descendant(reg, grandparent, child) == false);
 
-    CHECK(destroy_hierarchy::is_descendant(reg, child, grandparent) == true);
-    CHECK(destroy_hierarchy::is_descendant(reg, parent, grandparent) == true);
-    CHECK(destroy_hierarchy::is_descendant(reg, grandparent, child) == false);
-
-    // Attempting to make `grandparent` a child of its own descendant `child`
-    // would create a cycle; the ENTTX_ASSERT guards against it in debug
-    // builds. We simply verify the detection function used for the guard
-    // reports the correct result rather than invoking undefined behavior.
-    CHECK(destroy_hierarchy::is_descendant(reg, grandparent, child) == false);
-    CHECK(destroy_hierarchy::is_descendant(reg, grandparent, grandparent) ==
-          false);
-  }
+        // Attempting to make `grandparent` a child of its own descendant `child`
+        // would create a cycle; the ENTTX_ASSERT guards against it in debug
+        // builds. We simply verify the detection function used for the guard
+        // reports the correct result rather than invoking undefined behavior.
+        CHECK(destroy_hierarchy::is_descendant(reg, grandparent, child) == false);
+        CHECK(destroy_hierarchy::is_descendant(reg, grandparent, grandparent) == false);
+    }
 
 } // TEST_SUITE("insertion")
 
@@ -328,151 +317,149 @@ TEST_SUITE("insertion") {
 // ---------------------------------------------------------------------------
 
 TEST_SUITE("detach") {
+    TEST_CASE("detach removes a middle child and relinks its siblings") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto c3 = reg.create();
 
-  TEST_CASE("detach removes a middle child and relinks its siblings") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto c3 = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::push_back(reg, parent, c3);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-    destroy_hierarchy::push_back(reg, parent, c3);
+        destroy_hierarchy::detach(reg, c2);
 
-    destroy_hierarchy::detach(reg, c2);
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c1, c3});
+        CHECK(reg.get<destroy_hierarchy>(parent).child_count == 2);
 
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c1, c3});
-    CHECK(reg.get<destroy_hierarchy>(parent).child_count == 2);
+        auto &h2 = reg.get<destroy_hierarchy>(c2);
+        CHECK(h2.parent == entt::null);
+        CHECK(h2.next_sibling == entt::null);
+        CHECK(h2.prev_sibling == entt::null);
 
-    auto &h2 = reg.get<destroy_hierarchy>(c2);
-    CHECK(h2.parent == entt::null);
-    CHECK(h2.next_sibling == entt::null);
-    CHECK(h2.prev_sibling == entt::null);
-
-    // Siblings correctly relinked.
-    CHECK(reg.get<destroy_hierarchy>(c1).next_sibling == c3);
-    CHECK(reg.get<destroy_hierarchy>(c3).prev_sibling == c1);
-  }
-
-  TEST_CASE("detach of the first child updates parent's first_child") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-
-    destroy_hierarchy::detach(reg, c1);
-
-    CHECK(reg.get<destroy_hierarchy>(parent).first_child == c2);
-    CHECK(reg.get<destroy_hierarchy>(parent).child_count == 1);
-  }
-
-  TEST_CASE("detach of the last child updates parent's last_child") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-
-    destroy_hierarchy::detach(reg, c2);
-
-    CHECK(reg.get<destroy_hierarchy>(parent).last_child == c1);
-    CHECK(reg.get<destroy_hierarchy>(parent).child_count == 1);
-  }
-
-  TEST_CASE("detach of the only child leaves the parent with no children") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto child = reg.create();
-
-    destroy_hierarchy::push_back(reg, parent, child);
-    destroy_hierarchy::detach(reg, child);
-
-    auto &ph = reg.get<destroy_hierarchy>(parent);
-    CHECK(ph.first_child == entt::null);
-    CHECK(ph.last_child == entt::null);
-    CHECK(ph.child_count == 0);
-    CHECK(ph.has_children() == false);
-  }
-
-  TEST_CASE(
-      "detach on an entity without a hierarchy component is a safe no-op") {
-    entt::registry reg;
-    auto e = reg.create();
-    CHECK_NOTHROW(destroy_hierarchy::detach(reg, e));
-  }
-
-  TEST_CASE("detach on an entity with a hierarchy component but no parent is a "
-            "safe no-op") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto child = reg.create();
-    destroy_hierarchy::push_back(reg, parent, child);
-
-    // `parent` has a hierarchy component but h.parent == entt::null.
-    CHECK_NOTHROW(destroy_hierarchy::detach(reg, parent));
-    CHECK(reg.get<destroy_hierarchy>(parent).parent == entt::null);
-    // Children untouched.
-    CHECK(reg.get<destroy_hierarchy>(parent).child_count == 1);
-  }
-
-  TEST_CASE("orphan_children detaches all direct children but leaves them "
-            "independently valid") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto c3 = reg.create();
-    auto grandchild = reg.create();
-
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-    destroy_hierarchy::push_back(reg, parent, c3);
-    destroy_hierarchy::push_back(reg, c1, grandchild);
-
-    destroy_hierarchy::orphan_children(reg, parent);
-
-    auto &ph = reg.get<destroy_hierarchy>(parent);
-    CHECK(ph.first_child == entt::null);
-    CHECK(ph.last_child == entt::null);
-    CHECK(ph.child_count == 0);
-
-    for (auto c : {c1, c2, c3}) {
-      auto &ch = reg.get<destroy_hierarchy>(c);
-      CHECK(ch.parent == entt::null);
-      CHECK(ch.next_sibling == entt::null);
-      CHECK(ch.prev_sibling == entt::null);
-      CHECK(reg.valid(c)); // still alive, just orphaned
+        // Siblings correctly relinked.
+        CHECK(reg.get<destroy_hierarchy>(c1).next_sibling == c3);
+        CHECK(reg.get<destroy_hierarchy>(c3).prev_sibling == c1);
     }
 
-    // orphan_children only affects direct children, not grandchildren.
-    CHECK(reg.get<destroy_hierarchy>(grandchild).parent == c1);
-    CHECK(reg.valid(grandchild));
-  }
+    TEST_CASE("detach of the first child updates parent's first_child") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
 
-  TEST_CASE("orphan_children on an entity without a hierarchy component is a "
-            "safe no-op") {
-    entt::registry reg;
-    auto e = reg.create();
-    CHECK_NOTHROW(destroy_hierarchy::orphan_children(reg, e));
-  }
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
 
-  TEST_CASE("orphan_children on a childless parent is a safe no-op") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto child = reg.create();
-    destroy_hierarchy::push_back(reg, parent, child);
-    destroy_hierarchy::detach(reg, child);
+        destroy_hierarchy::detach(reg, c1);
 
-    CHECK_NOTHROW(destroy_hierarchy::orphan_children(reg, parent));
-    CHECK(reg.get<destroy_hierarchy>(parent).child_count == 0);
-  }
+        CHECK(reg.get<destroy_hierarchy>(parent).first_child == c2);
+        CHECK(reg.get<destroy_hierarchy>(parent).child_count == 1);
+    }
+
+    TEST_CASE("detach of the last child updates parent's last_child") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
+
+        destroy_hierarchy::detach(reg, c2);
+
+        CHECK(reg.get<destroy_hierarchy>(parent).last_child == c1);
+        CHECK(reg.get<destroy_hierarchy>(parent).child_count == 1);
+    }
+
+    TEST_CASE("detach of the only child leaves the parent with no children") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto child = reg.create();
+
+        destroy_hierarchy::push_back(reg, parent, child);
+        destroy_hierarchy::detach(reg, child);
+
+        auto &ph = reg.get<destroy_hierarchy>(parent);
+        CHECK(ph.first_child == entt::null);
+        CHECK(ph.last_child == entt::null);
+        CHECK(ph.child_count == 0);
+        CHECK(ph.has_children() == false);
+    }
+
+    TEST_CASE(
+        "detach on an entity without a hierarchy component is a safe no-op") {
+        entt::registry reg;
+        auto e = reg.create();
+        CHECK_NOTHROW(destroy_hierarchy::detach(reg, e));
+    }
+
+    TEST_CASE("detach on an entity with a hierarchy component but no parent is a "
+              "safe no-op") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto child = reg.create();
+        destroy_hierarchy::push_back(reg, parent, child);
+
+        // `parent` has a hierarchy component but h.parent == entt::null.
+        CHECK_NOTHROW(destroy_hierarchy::detach(reg, parent));
+        CHECK(reg.get<destroy_hierarchy>(parent).parent == entt::null);
+        // Children untouched.
+        CHECK(reg.get<destroy_hierarchy>(parent).child_count == 1);
+    }
+
+    TEST_CASE("orphan_children detaches all direct children but leaves them "
+              "independently valid") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto c3 = reg.create();
+        auto grandchild = reg.create();
+
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::push_back(reg, parent, c3);
+        destroy_hierarchy::push_back(reg, c1, grandchild);
+
+        destroy_hierarchy::orphan_children(reg, parent);
+
+        auto &ph = reg.get<destroy_hierarchy>(parent);
+        CHECK(ph.first_child == entt::null);
+        CHECK(ph.last_child == entt::null);
+        CHECK(ph.child_count == 0);
+
+        for(auto c: {c1, c2, c3}) {
+            auto &ch = reg.get<destroy_hierarchy>(c);
+            CHECK(ch.parent == entt::null);
+            CHECK(ch.next_sibling == entt::null);
+            CHECK(ch.prev_sibling == entt::null);
+            CHECK(reg.valid(c)); // still alive, just orphaned
+        }
+
+        // orphan_children only affects direct children, not grandchildren.
+        CHECK(reg.get<destroy_hierarchy>(grandchild).parent == c1);
+        CHECK(reg.valid(grandchild));
+    }
+
+    TEST_CASE("orphan_children on an entity without a hierarchy component is a "
+              "safe no-op") {
+        entt::registry reg;
+        auto e = reg.create();
+        CHECK_NOTHROW(destroy_hierarchy::orphan_children(reg, e));
+    }
+
+    TEST_CASE("orphan_children on a childless parent is a safe no-op") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto child = reg.create();
+        destroy_hierarchy::push_back(reg, parent, child);
+        destroy_hierarchy::detach(reg, child);
+
+        CHECK_NOTHROW(destroy_hierarchy::orphan_children(reg, parent));
+        CHECK(reg.get<destroy_hierarchy>(parent).child_count == 0);
+    }
 
 } // TEST_SUITE("detach")
 
@@ -481,182 +468,177 @@ TEST_SUITE("detach") {
 // ---------------------------------------------------------------------------
 
 TEST_SUITE("iteration") {
+    TEST_CASE(
+        "children_view forward iteration visits children in sibling order") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto c3 = reg.create();
 
-  TEST_CASE(
-      "children_view forward iteration visits children in sibling order") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto c3 = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::push_back(reg, parent, c3);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-    destroy_hierarchy::push_back(reg, parent, c3);
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c1, c2, c3});
+    }
 
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c1, c2, c3});
-  }
+    TEST_CASE("children_view reverse iteration visits children in reverse "
+              "sibling order") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto c3 = reg.create();
 
-  TEST_CASE("children_view reverse iteration visits children in reverse "
-            "sibling order") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto c3 = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::push_back(reg, parent, c3);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-    destroy_hierarchy::push_back(reg, parent, c3);
+        CHECK(collect_children_reverse<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c3, c2, c1});
+    }
 
-    CHECK(collect_children_reverse<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c3, c2, c1});
-  }
+    TEST_CASE("children_view on a parent without children (no component) yields "
+              "an empty range") {
+        entt::registry reg;
+        auto lonely = reg.create();
 
-  TEST_CASE("children_view on a parent without children (no component) yields "
-            "an empty range") {
-    entt::registry reg;
-    auto lonely = reg.create();
+        auto kids = collect_children<destroy_hierarchy>(reg, lonely);
+        CHECK(kids.empty());
 
-    auto kids = collect_children<destroy_hierarchy>(reg, lonely);
-    CHECK(kids.empty());
+        auto view = destroy_hierarchy::children(reg, lonely);
+        CHECK(view.begin() == view.end());
+    }
 
-    auto view = destroy_hierarchy::children(reg, lonely);
-    CHECK(view.begin() == view.end());
-  }
+    TEST_CASE("children_view on a parent with the component but zero children "
+              "yields an empty range") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto child = reg.create();
+        destroy_hierarchy::push_back(reg, parent, child);
+        destroy_hierarchy::detach(reg, child);
 
-  TEST_CASE("children_view on a parent with the component but zero children "
-            "yields an empty range") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto child = reg.create();
-    destroy_hierarchy::push_back(reg, parent, child);
-    destroy_hierarchy::detach(reg, child);
+        CHECK(collect_children<destroy_hierarchy>(reg, parent).empty());
+    }
 
-    CHECK(collect_children<destroy_hierarchy>(reg, parent).empty());
-  }
+    TEST_CASE("has_children reflects the current child_count") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto child = reg.create();
 
-  TEST_CASE("has_children reflects the current child_count") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto child = reg.create();
+        destroy_hierarchy::push_back(reg, parent, child);
+        CHECK(reg.get<destroy_hierarchy>(parent).has_children());
 
-    destroy_hierarchy::push_back(reg, parent, child);
-    CHECK(reg.get<destroy_hierarchy>(parent).has_children());
+        destroy_hierarchy::detach(reg, child);
+        CHECK_FALSE(reg.get<destroy_hierarchy>(parent).has_children());
+    }
 
-    destroy_hierarchy::detach(reg, child);
-    CHECK_FALSE(reg.get<destroy_hierarchy>(parent).has_children());
-  }
+    TEST_CASE("for_each_child visits only direct children, not descendants") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto grandchild = reg.create();
 
-  TEST_CASE("for_each_child visits only direct children, not descendants") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto grandchild = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::push_back(reg, c1, grandchild);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-    destroy_hierarchy::push_back(reg, c1, grandchild);
+        std::vector<entt::entity> visited;
+        destroy_hierarchy::for_each_child(
+            reg, parent, [&](entt::entity e) { visited.push_back(e); });
 
-    std::vector<entt::entity> visited;
-    destroy_hierarchy::for_each_child(
-        reg, parent, [&](entt::entity e) { visited.push_back(e); });
+        CHECK(visited == std::vector<entt::entity>{c1, c2});
+    }
 
-    CHECK(visited == std::vector<entt::entity>{c1, c2});
-  }
+    TEST_CASE(
+        "for_each_child safely tolerates detaching the currently-visited child") {
+        // The child_iterator caches the "next" pointer *before* invoking the
+        // callback for the current element, so it is safe for the callback to
+        // detach or destroy the entity it was just handed -- that's the
+        // documented guarantee ("fn can safely detach or destroy the visited
+        // child entity").
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto c3 = reg.create();
 
-  TEST_CASE(
-      "for_each_child safely tolerates detaching the currently-visited child") {
-    // The child_iterator caches the "next" pointer *before* invoking the
-    // callback for the current element, so it is safe for the callback to
-    // detach or destroy the entity it was just handed -- that's the
-    // documented guarantee ("fn can safely detach or destroy the visited
-    // child entity").
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto c3 = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::push_back(reg, parent, c3);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-    destroy_hierarchy::push_back(reg, parent, c3);
+        std::vector<entt::entity> visited;
+        destroy_hierarchy::for_each_child(reg, parent, [&](entt::entity e) {
+            visited.push_back(e);
+            if(e == c2) {
+                destroy_hierarchy::detach(reg, c2);
+            }
+        });
 
-    std::vector<entt::entity> visited;
-    destroy_hierarchy::for_each_child(reg, parent, [&](entt::entity e) {
-      visited.push_back(e);
-      if (e == c2) {
-        destroy_hierarchy::detach(reg, c2);
-      }
-    });
+        CHECK(visited == std::vector<entt::entity>{c1, c2, c3});
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c1, c3});
+    }
 
-    CHECK(visited == std::vector<entt::entity>{c1, c2, c3});
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c1, c3});
-  }
+    TEST_CASE("for_each_child safely tolerates destroying the currently-visited "
+              "child") {
+        entt::registry reg;
 
-  TEST_CASE("for_each_child safely tolerates destroying the currently-visited "
-            "child") {
-    entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto c3 = reg.create();
 
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto c3 = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::push_back(reg, parent, c3);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-    destroy_hierarchy::push_back(reg, parent, c3);
+        std::vector<entt::entity> visited;
+        destroy_hierarchy::for_each_child(reg, parent, [&](entt::entity e) {
+            visited.push_back(e);
+            if(e == c2) {
+                reg.destroy(c2);
+            }
+        });
 
-    std::vector<entt::entity> visited;
-    destroy_hierarchy::for_each_child(reg, parent, [&](entt::entity e) {
-      visited.push_back(e);
-      if (e == c2) {
-        reg.destroy(c2);
-      }
-    });
+        CHECK(visited == std::vector<entt::entity>{c1, c2, c3});
+        CHECK_FALSE(reg.valid(c2));
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c1, c3});
+    }
 
-    CHECK(visited == std::vector<entt::entity>{c1, c2, c3});
-    CHECK_FALSE(reg.valid(c2));
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c1, c3});
-  }
+    TEST_CASE("for_each_descendant visits all descendants in post-order "
+              "(children before parent)") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto a = reg.create();
+        auto b = reg.create();
+        auto a1 = reg.create();
+        auto a2 = reg.create();
 
-  TEST_CASE("for_each_descendant visits all descendants in post-order "
-            "(children before parent)") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto a = reg.create();
-    auto b = reg.create();
-    auto a1 = reg.create();
-    auto a2 = reg.create();
+        destroy_hierarchy::push_back(reg, root, a);
+        destroy_hierarchy::push_back(reg, root, b);
+        destroy_hierarchy::push_back(reg, a, a1);
+        destroy_hierarchy::push_back(reg, a, a2);
 
-    destroy_hierarchy::push_back(reg, root, a);
-    destroy_hierarchy::push_back(reg, root, b);
-    destroy_hierarchy::push_back(reg, a, a1);
-    destroy_hierarchy::push_back(reg, a, a2);
+        std::vector<entt::entity> visited;
+        destroy_hierarchy::for_each_descendant(
+            reg, root, [&](entt::entity e) { visited.push_back(e); });
 
-    std::vector<entt::entity> visited;
-    destroy_hierarchy::for_each_descendant(
-        reg, root, [&](entt::entity e) { visited.push_back(e); });
+        // Expected depth-first post-order: for child `a`, its own children (a1, a2)
+        // are visited before `a` itself; then sibling `b` is visited (no children).
+        CHECK(visited == std::vector<entt::entity>{a1, a2, a, b});
+    }
 
-    // Expected depth-first post-order: for child `a`, its own children (a1, a2)
-    // are visited before `a` itself; then sibling `b` is visited (no children).
-    CHECK(visited == std::vector<entt::entity>{a1, a2, a, b});
-  }
+    TEST_CASE("for_each_descendant on a leaf entity visits nothing") {
+        entt::registry reg;
+        auto leaf = reg.create();
 
-  TEST_CASE("for_each_descendant on a leaf entity visits nothing") {
-    entt::registry reg;
-    auto leaf = reg.create();
+        std::vector<entt::entity> visited;
+        destroy_hierarchy::for_each_descendant(
+            reg, leaf, [&](entt::entity e) { visited.push_back(e); });
 
-    std::vector<entt::entity> visited;
-    destroy_hierarchy::for_each_descendant(
-        reg, leaf, [&](entt::entity e) { visited.push_back(e); });
-
-    CHECK(visited.empty());
-  }
+        CHECK(visited.empty());
+    }
 
 } // TEST_SUITE("iteration")
 
@@ -665,91 +647,90 @@ TEST_SUITE("iteration") {
 // ---------------------------------------------------------------------------
 
 TEST_SUITE("ancestry queries") {
+    TEST_CASE("find_root walks up to the top-most ancestor") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto mid = reg.create();
+        auto leaf = reg.create();
 
-  TEST_CASE("find_root walks up to the top-most ancestor") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto mid = reg.create();
-    auto leaf = reg.create();
+        destroy_hierarchy::push_back(reg, root, mid);
+        destroy_hierarchy::push_back(reg, mid, leaf);
 
-    destroy_hierarchy::push_back(reg, root, mid);
-    destroy_hierarchy::push_back(reg, mid, leaf);
-
-    CHECK(destroy_hierarchy::find_root(reg, leaf) == root);
-    CHECK(destroy_hierarchy::find_root(reg, mid) == root);
-    CHECK(destroy_hierarchy::find_root(reg, root) == root);
-  }
-
-  TEST_CASE(
-      "find_root on an entity without a hierarchy component returns itself") {
-    entt::registry reg;
-    auto e = reg.create();
-    CHECK(destroy_hierarchy::find_root(reg, e) == e);
-  }
-
-  TEST_CASE("find_root stops at an orphaned node (parent == entt::null)") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto child = reg.create();
-    destroy_hierarchy::push_back(reg, parent, child);
-    destroy_hierarchy::detach(reg, child);
-
-    CHECK(destroy_hierarchy::find_root(reg, child) == child);
-  }
-
-  TEST_CASE("is_descendant correctly reports ancestry across multiple levels") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto mid = reg.create();
-    auto leaf = reg.create();
-    auto unrelated = reg.create();
-
-    destroy_hierarchy::push_back(reg, root, mid);
-    destroy_hierarchy::push_back(reg, mid, leaf);
-
-    CHECK(destroy_hierarchy::is_descendant(reg, leaf, root) == true);
-    CHECK(destroy_hierarchy::is_descendant(reg, leaf, mid) == true);
-    CHECK(destroy_hierarchy::is_descendant(reg, mid, root) == true);
-    CHECK(destroy_hierarchy::is_descendant(reg, root, leaf) == false);
-    CHECK(destroy_hierarchy::is_descendant(reg, unrelated, root) == false);
-    CHECK(destroy_hierarchy::is_descendant(reg, leaf, unrelated) == false);
-  }
-
-  TEST_CASE("parents view walks strictly from the immediate parent upward, "
-            "excluding the starting entity itself") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto mid = reg.create();
-    auto leaf = reg.create();
-
-    destroy_hierarchy::push_back(reg, root, mid);
-    destroy_hierarchy::push_back(reg, mid, leaf);
-
-    std::vector<entt::entity> visited;
-    for (auto p : destroy_hierarchy::parents(reg, leaf)) {
-      visited.push_back(p);
+        CHECK(destroy_hierarchy::find_root(reg, leaf) == root);
+        CHECK(destroy_hierarchy::find_root(reg, mid) == root);
+        CHECK(destroy_hierarchy::find_root(reg, root) == root);
     }
-    CHECK(visited == std::vector<entt::entity>{mid, root});
-  }
 
-  TEST_CASE("parents view on an entity without a hierarchy component is "
-            "empty") {
-    entt::registry reg;
-    auto e = reg.create();
+    TEST_CASE(
+        "find_root on an entity without a hierarchy component returns itself") {
+        entt::registry reg;
+        auto e = reg.create();
+        CHECK(destroy_hierarchy::find_root(reg, e) == e);
+    }
 
-    auto view = destroy_hierarchy::parents(reg, e);
-    CHECK(view.begin() == view.end());
-  }
+    TEST_CASE("find_root stops at an orphaned node (parent == entt::null)") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto child = reg.create();
+        destroy_hierarchy::push_back(reg, parent, child);
+        destroy_hierarchy::detach(reg, child);
 
-  TEST_CASE("parents view on the root of a tree (no parent) is empty") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto child = reg.create();
-    destroy_hierarchy::push_back(reg, root, child);
+        CHECK(destroy_hierarchy::find_root(reg, child) == child);
+    }
 
-    auto view = destroy_hierarchy::parents(reg, root);
-    CHECK(view.begin() == view.end());
-  }
+    TEST_CASE("is_descendant correctly reports ancestry across multiple levels") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto mid = reg.create();
+        auto leaf = reg.create();
+        auto unrelated = reg.create();
+
+        destroy_hierarchy::push_back(reg, root, mid);
+        destroy_hierarchy::push_back(reg, mid, leaf);
+
+        CHECK(destroy_hierarchy::is_descendant(reg, leaf, root) == true);
+        CHECK(destroy_hierarchy::is_descendant(reg, leaf, mid) == true);
+        CHECK(destroy_hierarchy::is_descendant(reg, mid, root) == true);
+        CHECK(destroy_hierarchy::is_descendant(reg, root, leaf) == false);
+        CHECK(destroy_hierarchy::is_descendant(reg, unrelated, root) == false);
+        CHECK(destroy_hierarchy::is_descendant(reg, leaf, unrelated) == false);
+    }
+
+    TEST_CASE("parents view walks strictly from the immediate parent upward, "
+              "excluding the starting entity itself") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto mid = reg.create();
+        auto leaf = reg.create();
+
+        destroy_hierarchy::push_back(reg, root, mid);
+        destroy_hierarchy::push_back(reg, mid, leaf);
+
+        std::vector<entt::entity> visited;
+        for(auto p: destroy_hierarchy::parents(reg, leaf)) {
+            visited.push_back(p);
+        }
+        CHECK(visited == std::vector<entt::entity>{mid, root});
+    }
+
+    TEST_CASE("parents view on an entity without a hierarchy component is "
+              "empty") {
+        entt::registry reg;
+        auto e = reg.create();
+
+        auto view = destroy_hierarchy::parents(reg, e);
+        CHECK(view.begin() == view.end());
+    }
+
+    TEST_CASE("parents view on the root of a tree (no parent) is empty") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto child = reg.create();
+        destroy_hierarchy::push_back(reg, root, child);
+
+        auto view = destroy_hierarchy::parents(reg, root);
+        CHECK(view.begin() == view.end());
+    }
 
 } // TEST_SUITE("ancestry queries")
 
@@ -760,174 +741,342 @@ TEST_SUITE("ancestry queries") {
 
 namespace {
 struct marker {
-  int value{};
+    int value{};
 };
 } // namespace
 
+namespace {
+struct skip {};
+struct weight {
+    int v{};
+};
+} // namespace
+
+TEST_SUITE("for_each_*_with") {
+    TEST_CASE("for_each_child_with filters on components and passes refs") {
+        entt::registry reg;
+        const auto p = reg.create(), a = reg.create(), b = reg.create(),
+                   c = reg.create();
+        reg.emplace<marker>(a, 1);
+        reg.emplace<marker>(b, 2);
+        reg.emplace<weight>(b, 5);
+        destroy_hierarchy::push_back(reg, p, a);
+        destroy_hierarchy::push_back(reg, p, b);
+        destroy_hierarchy::push_back(reg, p, c);
+
+        std::vector<entt::entity> seen;
+        destroy_hierarchy::for_each_child_with<marker>(
+            reg, p, [&](entt::entity e, marker &m) {
+                m.value += 10;
+                seen.push_back(e);
+            });
+        CHECK(seen == std::vector<entt::entity>{a, b});
+        CHECK(reg.get<marker>(a).value == 11);
+
+        seen.clear();
+        destroy_hierarchy::for_each_child_with<marker, weight>(
+            reg, p, [&](entt::entity e, marker &, weight &w) {
+                CHECK(w.v == 5);
+                seen.push_back(e);
+            });
+        CHECK(seen == std::vector<entt::entity>{b});
+    }
+
+    TEST_CASE("for_each_child_with honours entt::exclude and pageless types") {
+        entt::registry reg;
+        const auto p = reg.create(), a = reg.create(), b = reg.create();
+        reg.emplace<marker>(a);
+        reg.emplace<marker>(b);
+        reg.emplace<skip>(b);
+        destroy_hierarchy::push_back(reg, p, a);
+        destroy_hierarchy::push_back(reg, p, b);
+
+        std::vector<entt::entity> seen;
+        destroy_hierarchy::for_each_child_with<marker>(
+            reg, p, entt::exclude<skip>,
+            [&](entt::entity e, marker &) { seen.push_back(e); });
+        CHECK(seen == std::vector<entt::entity>{a});
+
+        // Pageless type is filtered on but not passed to the callback.
+        seen.clear();
+        destroy_hierarchy::for_each_child_with<skip>(
+            reg, p, [&](entt::entity e) { seen.push_back(e); });
+        CHECK(seen == std::vector<entt::entity>{b});
+
+        // Exclude-only.
+        seen.clear();
+        destroy_hierarchy::for_each_child_with<>(
+            reg, p, entt::exclude<skip>, [&](entt::entity e) { seen.push_back(e); });
+        CHECK(seen == std::vector<entt::entity>{a});
+    }
+
+    TEST_CASE("for_each_child_with works on a const registry") {
+        entt::registry reg;
+        const auto p = reg.create(), a = reg.create();
+        reg.emplace<marker>(a, 3);
+        destroy_hierarchy::push_back(reg, p, a);
+        const entt::registry &creg = reg;
+        int sum = 0;
+        destroy_hierarchy::for_each_child_with<marker>(
+            creg, p, [&](entt::entity, const marker &m) { sum += m.value; });
+        CHECK(sum == 3);
+    }
+
+    TEST_CASE("for_each_descendant_with traverses through non-matching nodes") {
+        entt::registry reg;
+        const auto r = reg.create(), mid = reg.create(), leaf = reg.create(),
+                   ex = reg.create();
+        reg.emplace<marker>(leaf);
+        reg.emplace<marker>(ex);
+        reg.emplace<skip>(ex);
+        destroy_hierarchy::push_back(reg, r, mid);
+        destroy_hierarchy::push_back(reg, mid, leaf);
+        destroy_hierarchy::push_back(reg, mid, ex);
+
+        std::vector<entt::entity> seen;
+        destroy_hierarchy::for_each_descendant_with<marker>(
+            reg, r, entt::exclude<skip>,
+            [&](entt::entity e, marker &) { seen.push_back(e); });
+        CHECK(seen == std::vector<entt::entity>{leaf});
+    }
+
+    TEST_CASE("for_each_parent_with visits matching ancestors nearest first") {
+        entt::registry reg;
+        const auto r = reg.create(), mid = reg.create(), leaf = reg.create();
+        reg.emplace<marker>(r);
+        reg.emplace<marker>(mid);
+        reg.emplace<skip>(mid);
+        destroy_hierarchy::push_back(reg, r, mid);
+        destroy_hierarchy::push_back(reg, mid, leaf);
+
+        std::vector<entt::entity> seen;
+        destroy_hierarchy::for_each_parent_with<marker>(
+            reg, leaf, [&](entt::entity e, marker &) { seen.push_back(e); });
+        CHECK(seen == std::vector<entt::entity>{mid, r});
+
+        seen.clear();
+        destroy_hierarchy::for_each_parent_with<marker>(
+            reg, leaf, entt::exclude<skip>,
+            [&](entt::entity e, marker &) { seen.push_back(e); });
+        CHECK(seen == std::vector<entt::entity>{r});
+    }
+
+    TEST_CASE("descendant/parent visitors and try_get_in_* work on a const "
+              "registry") {
+        entt::registry reg;
+        const auto r = reg.create(), mid = reg.create(), leaf = reg.create();
+        reg.emplace<marker>(r, 1);
+        reg.emplace<marker>(leaf, 2);
+        destroy_hierarchy::push_back(reg, r, mid);
+        destroy_hierarchy::push_back(reg, mid, leaf);
+        const entt::registry &creg = reg;
+
+        std::vector<entt::entity> seen;
+        destroy_hierarchy::for_each_descendant_with<marker>(
+            creg, r, [&](entt::entity e, const marker &) { seen.push_back(e); });
+        CHECK(seen == std::vector<entt::entity>{leaf});
+
+        seen.clear();
+        destroy_hierarchy::for_each_parent_with<marker>(
+            creg, leaf, [&](entt::entity e, const marker &) { seen.push_back(e); });
+        CHECK(seen == std::vector<entt::entity>{r});
+
+        const marker *up = destroy_hierarchy::try_get_in_parent<marker>(creg, leaf);
+        REQUIRE(up != nullptr);
+        CHECK(up->value == 1);
+        const marker *down =
+            destroy_hierarchy::try_get_in_descendant<marker>(creg, r);
+        REQUIRE(down != nullptr);
+        CHECK(down->value == 2);
+        CHECK(destroy_hierarchy::try_get_in_child<marker>(creg, mid) == down);
+    }
+
+    TEST_CASE("find_*_with honour entt::exclude") {
+        entt::registry reg;
+        const auto r = reg.create(), a = reg.create(), b = reg.create(),
+                   g = reg.create();
+        reg.emplace<marker>(a);
+        reg.emplace<skip>(a);
+        reg.emplace<marker>(b);
+        reg.emplace<marker>(g);
+        destroy_hierarchy::push_back(reg, r, a);
+        destroy_hierarchy::push_back(reg, r, b);
+        destroy_hierarchy::push_back(reg, a, g);
+
+        CHECK(destroy_hierarchy::find_child_with<marker>(reg, r) == a);
+        CHECK(destroy_hierarchy::find_child_with<marker>(reg, r,
+                                                         entt::exclude<skip>)
+              == b);
+        CHECK(destroy_hierarchy::find_descendant_with<marker>(
+                  reg, r, entt::exclude<skip, weight>)
+              == g);
+        CHECK(destroy_hierarchy::find_parent_with<marker>(reg, g) == a);
+        CHECK(destroy_hierarchy::find_parent_with<marker>(
+                  reg, g, entt::exclude<skip>)
+              == entt::null);
+    }
+}
+
 TEST_SUITE("component-aware hierarchy queries") {
+    TEST_CASE("find_parent_with finds the nearest ancestor with the requested "
+              "component, excluding the entity itself") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto mid = reg.create();
+        auto leaf = reg.create();
 
-  TEST_CASE("find_parent_with finds the nearest ancestor with the requested "
-            "component, excluding the entity itself") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto mid = reg.create();
-    auto leaf = reg.create();
+        destroy_hierarchy::push_back(reg, root, mid);
+        destroy_hierarchy::push_back(reg, mid, leaf);
 
-    destroy_hierarchy::push_back(reg, root, mid);
-    destroy_hierarchy::push_back(reg, mid, leaf);
+        reg.emplace<marker>(root, 1);
+        reg.emplace<marker>(leaf, 2); // leaf has its own marker, must be ignored
 
-    reg.emplace<marker>(root, 1);
-    reg.emplace<marker>(leaf, 2); // leaf has its own marker, must be ignored
+        CHECK(destroy_hierarchy::find_parent_with<marker>(reg, leaf) == root);
+    }
 
-    CHECK(destroy_hierarchy::find_parent_with<marker>(reg, leaf) == root);
-  }
+    TEST_CASE("find_parent_with prefers the closer ancestor over a farther "
+              "one") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto mid = reg.create();
+        auto leaf = reg.create();
 
-  TEST_CASE("find_parent_with prefers the closer ancestor over a farther "
-            "one") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto mid = reg.create();
-    auto leaf = reg.create();
+        destroy_hierarchy::push_back(reg, root, mid);
+        destroy_hierarchy::push_back(reg, mid, leaf);
 
-    destroy_hierarchy::push_back(reg, root, mid);
-    destroy_hierarchy::push_back(reg, mid, leaf);
+        reg.emplace<marker>(root, 1);
+        reg.emplace<marker>(mid, 2);
 
-    reg.emplace<marker>(root, 1);
-    reg.emplace<marker>(mid, 2);
+        CHECK(destroy_hierarchy::find_parent_with<marker>(reg, leaf) == mid);
+    }
 
-    CHECK(destroy_hierarchy::find_parent_with<marker>(reg, leaf) == mid);
-  }
+    TEST_CASE("find_parent_with returns null when no ancestor has the "
+              "component") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto leaf = reg.create();
+        destroy_hierarchy::push_back(reg, root, leaf);
 
-  TEST_CASE("find_parent_with returns null when no ancestor has the "
-            "component") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto leaf = reg.create();
-    destroy_hierarchy::push_back(reg, root, leaf);
+        CHECK(destroy_hierarchy::find_parent_with<marker>(reg, leaf) == entt::null);
+    }
 
-    CHECK(destroy_hierarchy::find_parent_with<marker>(reg, leaf) == entt::null);
-  }
+    TEST_CASE("find_child_with finds the first direct child with the "
+              "requested component") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto c3 = reg.create();
 
-  TEST_CASE("find_child_with finds the first direct child with the "
-            "requested component") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto c3 = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::push_back(reg, parent, c3);
+        reg.emplace<marker>(c2, 42);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-    destroy_hierarchy::push_back(reg, parent, c3);
-    reg.emplace<marker>(c2, 42);
+        CHECK(destroy_hierarchy::find_child_with<marker>(reg, parent) == c2);
+    }
 
-    CHECK(destroy_hierarchy::find_child_with<marker>(reg, parent) == c2);
-  }
+    TEST_CASE("find_child_with does not match grandchildren") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto child = reg.create();
+        auto grandchild = reg.create();
 
-  TEST_CASE("find_child_with does not match grandchildren") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto child = reg.create();
-    auto grandchild = reg.create();
+        destroy_hierarchy::push_back(reg, parent, child);
+        destroy_hierarchy::push_back(reg, child, grandchild);
+        reg.emplace<marker>(grandchild, 1);
 
-    destroy_hierarchy::push_back(reg, parent, child);
-    destroy_hierarchy::push_back(reg, child, grandchild);
-    reg.emplace<marker>(grandchild, 1);
+        CHECK(destroy_hierarchy::find_child_with<marker>(reg, parent) == entt::null);
+    }
 
-    CHECK(destroy_hierarchy::find_child_with<marker>(reg, parent) ==
-          entt::null);
-  }
+    TEST_CASE("find_descendant_with performs a depth-first pre-order search") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto a = reg.create();
+        auto b = reg.create();
+        auto a1 = reg.create();
 
-  TEST_CASE("find_descendant_with performs a depth-first pre-order search") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto a = reg.create();
-    auto b = reg.create();
-    auto a1 = reg.create();
+        destroy_hierarchy::push_back(reg, root, a);
+        destroy_hierarchy::push_back(reg, root, b);
+        destroy_hierarchy::push_back(reg, a, a1);
+        reg.emplace<marker>(a1, 1);
+        reg.emplace<marker>(b, 2);
 
-    destroy_hierarchy::push_back(reg, root, a);
-    destroy_hierarchy::push_back(reg, root, b);
-    destroy_hierarchy::push_back(reg, a, a1);
-    reg.emplace<marker>(a1, 1);
-    reg.emplace<marker>(b, 2);
+        // `a1` (under `a`) is visited before `b`, since `a` is the first child
+        // and its subtree is explored before moving on to the sibling `b`.
+        CHECK(destroy_hierarchy::find_descendant_with<marker>(reg, root) == a1);
+    }
 
-    // `a1` (under `a`) is visited before `b`, since `a` is the first child
-    // and its subtree is explored before moving on to the sibling `b`.
-    CHECK(destroy_hierarchy::find_descendant_with<marker>(reg, root) == a1);
-  }
+    TEST_CASE("find_descendant_with returns null when nothing in the subtree "
+              "matches") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto child = reg.create();
+        destroy_hierarchy::push_back(reg, root, child);
 
-  TEST_CASE("find_descendant_with returns null when nothing in the subtree "
-            "matches") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto child = reg.create();
-    destroy_hierarchy::push_back(reg, root, child);
+        CHECK(destroy_hierarchy::find_descendant_with<marker>(reg, root) == entt::null);
+    }
 
-    CHECK(destroy_hierarchy::find_descendant_with<marker>(reg, root) ==
-          entt::null);
-  }
+    TEST_CASE("try_get_in_parent returns a pointer to the ancestor's "
+              "component, or nullptr when none matches") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto leaf = reg.create();
+        destroy_hierarchy::push_back(reg, root, leaf);
+        reg.emplace<marker>(root, 7);
 
-  TEST_CASE("try_get_in_parent returns a pointer to the ancestor's "
-            "component, or nullptr when none matches") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto leaf = reg.create();
-    destroy_hierarchy::push_back(reg, root, leaf);
-    reg.emplace<marker>(root, 7);
+        auto *found = destroy_hierarchy::try_get_in_parent<marker>(reg, leaf);
+        REQUIRE(found != nullptr);
+        CHECK(found->value == 7);
 
-    auto *found = destroy_hierarchy::try_get_in_parent<marker>(reg, leaf);
-    REQUIRE(found != nullptr);
-    CHECK(found->value == 7);
+        auto other = reg.create();
+        CHECK(destroy_hierarchy::try_get_in_parent<marker>(reg, other) == nullptr);
+    }
 
-    auto other = reg.create();
-    CHECK(destroy_hierarchy::try_get_in_parent<marker>(reg, other) == nullptr);
-  }
+    TEST_CASE("try_get_in_child returns a pointer to the matching direct "
+              "child's component") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto child = reg.create();
+        destroy_hierarchy::push_back(reg, parent, child);
+        reg.emplace<marker>(child, 9);
 
-  TEST_CASE("try_get_in_child returns a pointer to the matching direct "
-            "child's component") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto child = reg.create();
-    destroy_hierarchy::push_back(reg, parent, child);
-    reg.emplace<marker>(child, 9);
+        auto *found = destroy_hierarchy::try_get_in_child<marker>(reg, parent);
+        REQUIRE(found != nullptr);
+        CHECK(found->value == 9);
+    }
 
-    auto *found = destroy_hierarchy::try_get_in_child<marker>(reg, parent);
-    REQUIRE(found != nullptr);
-    CHECK(found->value == 9);
-  }
+    TEST_CASE("try_get_in_descendant returns a pointer to the matching "
+              "descendant's component") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto mid = reg.create();
+        auto leaf = reg.create();
+        destroy_hierarchy::push_back(reg, root, mid);
+        destroy_hierarchy::push_back(reg, mid, leaf);
+        reg.emplace<marker>(leaf, 5);
 
-  TEST_CASE("try_get_in_descendant returns a pointer to the matching "
-            "descendant's component") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto mid = reg.create();
-    auto leaf = reg.create();
-    destroy_hierarchy::push_back(reg, root, mid);
-    destroy_hierarchy::push_back(reg, mid, leaf);
-    reg.emplace<marker>(leaf, 5);
+        auto *found = destroy_hierarchy::try_get_in_descendant<marker>(reg, root);
+        REQUIRE(found != nullptr);
+        CHECK(found->value == 5);
+    }
 
-    auto *found = destroy_hierarchy::try_get_in_descendant<marker>(reg, root);
-    REQUIRE(found != nullptr);
-    CHECK(found->value == 5);
-  }
+    TEST_CASE("try_get_in_parent/child/descendant const overloads compile and "
+              "behave the same as the mutable overloads") {
+        entt::registry reg;
+        auto root = reg.create();
+        auto mid = reg.create();
+        auto leaf = reg.create();
+        destroy_hierarchy::push_back(reg, root, mid);
+        destroy_hierarchy::push_back(reg, mid, leaf);
+        reg.emplace<marker>(root, 3);
+        reg.emplace<marker>(leaf, 4);
 
-  TEST_CASE("try_get_in_parent/child/descendant const overloads compile and "
-            "behave the same as the mutable overloads") {
-    entt::registry reg;
-    auto root = reg.create();
-    auto mid = reg.create();
-    auto leaf = reg.create();
-    destroy_hierarchy::push_back(reg, root, mid);
-    destroy_hierarchy::push_back(reg, mid, leaf);
-    reg.emplace<marker>(root, 3);
-    reg.emplace<marker>(leaf, 4);
-
-    const entt::registry &creg = reg;
-    CHECK(destroy_hierarchy::try_get_in_parent<marker>(creg, leaf)->value == 3);
-    CHECK(destroy_hierarchy::try_get_in_child<marker>(creg, mid)->value == 4);
-    CHECK(destroy_hierarchy::try_get_in_descendant<marker>(creg, root)->value ==
-          4);
-  }
+        const entt::registry &creg = reg;
+        CHECK(destroy_hierarchy::try_get_in_parent<marker>(creg, leaf)->value == 3);
+        CHECK(destroy_hierarchy::try_get_in_child<marker>(creg, mid)->value == 4);
+        CHECK(destroy_hierarchy::try_get_in_descendant<marker>(creg, root)->value == 4);
+    }
 
 } // TEST_SUITE("component-aware hierarchy queries")
 
@@ -936,194 +1085,190 @@ TEST_SUITE("component-aware hierarchy queries") {
 // ---------------------------------------------------------------------------
 
 TEST_SUITE("destruction") {
+    TEST_CASE("destroy_children policy: destroying a parent recursively destroys "
+              "all descendants") {
+        entt::registry reg;
 
-  TEST_CASE("destroy_children policy: destroying a parent recursively destroys "
-            "all descendants") {
-    entt::registry reg;
+        auto root = reg.create();
+        auto a = reg.create();
+        auto b = reg.create();
+        auto a1 = reg.create();
 
-    auto root = reg.create();
-    auto a = reg.create();
-    auto b = reg.create();
-    auto a1 = reg.create();
+        destroy_hierarchy::push_back(reg, root, a);
+        destroy_hierarchy::push_back(reg, root, b);
+        destroy_hierarchy::push_back(reg, a, a1);
 
-    destroy_hierarchy::push_back(reg, root, a);
-    destroy_hierarchy::push_back(reg, root, b);
-    destroy_hierarchy::push_back(reg, a, a1);
+        reg.destroy(root);
 
-    reg.destroy(root);
+        CHECK_FALSE(reg.valid(root));
+        CHECK_FALSE(reg.valid(a));
+        CHECK_FALSE(reg.valid(b));
+        CHECK_FALSE(reg.valid(a1)); // grandchild also destroyed
+    }
 
-    CHECK_FALSE(reg.valid(root));
-    CHECK_FALSE(reg.valid(a));
-    CHECK_FALSE(reg.valid(b));
-    CHECK_FALSE(reg.valid(a1)); // grandchild also destroyed
-  }
+    TEST_CASE("destroy_children policy: destroying a leaf child does not affect "
+              "its siblings") {
+        entt::registry reg;
 
-  TEST_CASE("destroy_children policy: destroying a leaf child does not affect "
-            "its siblings") {
-    entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        auto c3 = reg.create();
 
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    auto c3 = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
+        destroy_hierarchy::push_back(reg, parent, c3);
 
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
-    destroy_hierarchy::push_back(reg, parent, c3);
+        reg.destroy(c2);
 
-    reg.destroy(c2);
+        CHECK(reg.valid(parent));
+        CHECK(reg.valid(c1));
+        CHECK_FALSE(reg.valid(c2));
+        CHECK(reg.valid(c3));
 
-    CHECK(reg.valid(parent));
-    CHECK(reg.valid(c1));
-    CHECK_FALSE(reg.valid(c2));
-    CHECK(reg.valid(c3));
+        CHECK(collect_children<destroy_hierarchy>(reg, parent) == std::vector<entt::entity>{c1, c3});
+        CHECK(reg.get<destroy_hierarchy>(parent).child_count == 2);
+    }
 
-    CHECK(collect_children<destroy_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c1, c3});
-    CHECK(reg.get<destroy_hierarchy>(parent).child_count == 2);
-  }
+    TEST_CASE("destroy_children policy: destroying a mid-level node detaches it "
+              "from its parent and destroys only its own subtree") {
+        entt::registry reg;
 
-  TEST_CASE("destroy_children policy: destroying a mid-level node detaches it "
-            "from its parent and destroys only its own subtree") {
-    entt::registry reg;
+        auto root = reg.create();
+        auto a = reg.create();
+        auto b = reg.create();
+        auto a1 = reg.create();
 
-    auto root = reg.create();
-    auto a = reg.create();
-    auto b = reg.create();
-    auto a1 = reg.create();
+        destroy_hierarchy::push_back(reg, root, a);
+        destroy_hierarchy::push_back(reg, root, b);
+        destroy_hierarchy::push_back(reg, a, a1);
 
-    destroy_hierarchy::push_back(reg, root, a);
-    destroy_hierarchy::push_back(reg, root, b);
-    destroy_hierarchy::push_back(reg, a, a1);
+        reg.destroy(a);
 
-    reg.destroy(a);
+        CHECK(reg.valid(root));
+        CHECK_FALSE(reg.valid(a));
+        CHECK_FALSE(reg.valid(a1)); // a's subtree destroyed
+        CHECK(reg.valid(b));        // sibling untouched
 
-    CHECK(reg.valid(root));
-    CHECK_FALSE(reg.valid(a));
-    CHECK_FALSE(reg.valid(a1)); // a's subtree destroyed
-    CHECK(reg.valid(b));        // sibling untouched
+        CHECK(collect_children<destroy_hierarchy>(reg, root) == std::vector<entt::entity>{b});
+        CHECK(reg.get<destroy_hierarchy>(root).child_count == 1);
+    }
 
-    CHECK(collect_children<destroy_hierarchy>(reg, root) ==
-          std::vector<entt::entity>{b});
-    CHECK(reg.get<destroy_hierarchy>(root).child_count == 1);
-  }
+    TEST_CASE("destroy_children policy: destroying an entity without children "
+              "does not throw and is fine") {
+        entt::registry reg;
 
-  TEST_CASE("destroy_children policy: destroying an entity without children "
-            "does not throw and is fine") {
-    entt::registry reg;
+        auto e = reg.create();
+        CHECK_NOTHROW(reg.destroy(e));
+        CHECK_FALSE(reg.valid(e));
+    }
 
-    auto e = reg.create();
-    CHECK_NOTHROW(reg.destroy(e));
-    CHECK_FALSE(reg.valid(e));
-  }
+    TEST_CASE("destroy_children policy: destroying an entity without a hierarchy "
+              "component is a safe no-op for hierarchy logic") {
+        entt::registry reg;
 
-  TEST_CASE("destroy_children policy: destroying an entity without a hierarchy "
-            "component is a safe no-op for hierarchy logic") {
-    entt::registry reg;
+        auto e = reg.create(); // never given a destroy_hierarchy component
+        CHECK_NOTHROW(reg.destroy(e));
+    }
 
-    auto e = reg.create(); // never given a destroy_hierarchy component
-    CHECK_NOTHROW(reg.destroy(e));
-  }
+    TEST_CASE("orphan_children policy: destroying a parent orphans (does not "
+              "destroy) its children") {
+        entt::registry reg;
 
-  TEST_CASE("orphan_children policy: destroying a parent orphans (does not "
-            "destroy) its children") {
-    entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
 
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
+        orphan_hierarchy::push_back(reg, parent, c1);
+        orphan_hierarchy::push_back(reg, parent, c2);
 
-    orphan_hierarchy::push_back(reg, parent, c1);
-    orphan_hierarchy::push_back(reg, parent, c2);
+        reg.destroy(parent);
 
-    reg.destroy(parent);
+        CHECK_FALSE(reg.valid(parent));
+        CHECK(reg.valid(c1));
+        CHECK(reg.valid(c2));
 
-    CHECK_FALSE(reg.valid(parent));
-    CHECK(reg.valid(c1));
-    CHECK(reg.valid(c2));
+        auto &h1 = reg.get<orphan_hierarchy>(c1);
+        auto &h2 = reg.get<orphan_hierarchy>(c2);
+        CHECK(h1.parent == entt::null);
+        CHECK(h2.parent == entt::null);
+    }
 
-    auto &h1 = reg.get<orphan_hierarchy>(c1);
-    auto &h2 = reg.get<orphan_hierarchy>(c2);
-    CHECK(h1.parent == entt::null);
-    CHECK(h2.parent == entt::null);
-  }
+    TEST_CASE("orphan_children policy: only direct children are orphaned, "
+              "grandchildren keep their parent link") {
+        entt::registry reg;
 
-  TEST_CASE("orphan_children policy: only direct children are orphaned, "
-            "grandchildren keep their parent link") {
-    entt::registry reg;
+        auto root = reg.create();
+        auto a = reg.create();
+        auto a1 = reg.create();
 
-    auto root = reg.create();
-    auto a = reg.create();
-    auto a1 = reg.create();
+        orphan_hierarchy::push_back(reg, root, a);
+        orphan_hierarchy::push_back(reg, a, a1);
 
-    orphan_hierarchy::push_back(reg, root, a);
-    orphan_hierarchy::push_back(reg, a, a1);
+        reg.destroy(root);
 
-    reg.destroy(root);
+        CHECK(reg.valid(a));
+        CHECK(reg.valid(a1));
+        CHECK(reg.get<orphan_hierarchy>(a).parent == entt::null);
+        // a1's parent is still `a`, which is still alive.
+        CHECK(reg.get<orphan_hierarchy>(a1).parent == a);
+    }
 
-    CHECK(reg.valid(a));
-    CHECK(reg.valid(a1));
-    CHECK(reg.get<orphan_hierarchy>(a).parent == entt::null);
-    // a1's parent is still `a`, which is still alive.
-    CHECK(reg.get<orphan_hierarchy>(a1).parent == a);
-  }
+    TEST_CASE("orphan_children policy: destroying a child also detaches it from "
+              "its parent's list") {
+        entt::registry reg;
 
-  TEST_CASE("orphan_children policy: destroying a child also detaches it from "
-            "its parent's list") {
-    entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
 
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
+        orphan_hierarchy::push_back(reg, parent, c1);
+        orphan_hierarchy::push_back(reg, parent, c2);
 
-    orphan_hierarchy::push_back(reg, parent, c1);
-    orphan_hierarchy::push_back(reg, parent, c2);
+        reg.destroy(c1);
 
-    reg.destroy(c1);
+        CHECK(reg.valid(parent));
+        CHECK(reg.get<orphan_hierarchy>(parent).child_count == 1);
+        CHECK(collect_children<orphan_hierarchy>(reg, parent) == std::vector<entt::entity>{c2});
+    }
 
-    CHECK(reg.valid(parent));
-    CHECK(reg.get<orphan_hierarchy>(parent).child_count == 1);
-    CHECK(collect_children<orphan_hierarchy>(reg, parent) ==
-          std::vector<entt::entity>{c2});
-  }
+    TEST_CASE("unhandled policy: destroying a parent leaves children's stale "
+              "links untouched by hierarchy logic") {
+        entt::registry reg;
+        // Deliberately do NOT connect on_destroy: unhandled_hierarchy has no
+        // on_destroy overload at all (the `requires` clause excludes it), so
+        // hierarchy relationships are the user's responsibility on destruction.
 
-  TEST_CASE("unhandled policy: destroying a parent leaves children's stale "
-            "links untouched by hierarchy logic") {
-    entt::registry reg;
-    // Deliberately do NOT connect on_destroy: unhandled_hierarchy has no
-    // on_destroy overload at all (the `requires` clause excludes it), so
-    // hierarchy relationships are the user's responsibility on destruction.
+        auto parent = reg.create();
+        auto child = reg.create();
 
-    auto parent = reg.create();
-    auto child = reg.create();
+        unhandled_hierarchy::push_back(reg, parent, child);
+        REQUIRE(reg.get<unhandled_hierarchy>(child).parent == parent);
 
-    unhandled_hierarchy::push_back(reg, parent, child);
-    REQUIRE(reg.get<unhandled_hierarchy>(child).parent == parent);
+        reg.destroy(parent);
 
-    reg.destroy(parent);
+        CHECK_FALSE(reg.valid(parent));
+        CHECK(reg.valid(child)); // child is untouched -- policy does not manage it
+        // The child's hierarchy component still (stale) points at the now-dead
+        // parent, demonstrating that `unhandled` performs no bookkeeping at all.
+        CHECK(reg.get<unhandled_hierarchy>(child).parent == parent);
+    }
 
-    CHECK_FALSE(reg.valid(parent));
-    CHECK(reg.valid(child)); // child is untouched -- policy does not manage it
-    // The child's hierarchy component still (stale) points at the now-dead
-    // parent, demonstrating that `unhandled` performs no bookkeeping at all.
-    CHECK(reg.get<unhandled_hierarchy>(child).parent == parent);
-  }
+    TEST_CASE("destroy_children policy: reg.clear() destroys every entity "
+              "without corrupting bookkeeping") {
+        entt::registry reg;
 
-  TEST_CASE("destroy_children policy: reg.clear() destroys every entity "
-            "without corrupting bookkeeping") {
-    entt::registry reg;
+        auto root = reg.create();
+        auto a = reg.create();
+        auto b = reg.create();
+        destroy_hierarchy::push_back(reg, root, a);
+        destroy_hierarchy::push_back(reg, root, b);
 
-    auto root = reg.create();
-    auto a = reg.create();
-    auto b = reg.create();
-    destroy_hierarchy::push_back(reg, root, a);
-    destroy_hierarchy::push_back(reg, root, b);
-
-    CHECK_NOTHROW(reg.clear());
-    CHECK_FALSE(reg.valid(root));
-    CHECK_FALSE(reg.valid(a));
-    CHECK_FALSE(reg.valid(b));
-  }
+        CHECK_NOTHROW(reg.clear());
+        CHECK_FALSE(reg.valid(root));
+        CHECK_FALSE(reg.valid(a));
+        CHECK_FALSE(reg.valid(b));
+    }
 
 } // TEST_SUITE("destruction")
 
@@ -1132,82 +1277,81 @@ TEST_SUITE("destruction") {
 // ---------------------------------------------------------------------------
 
 TEST_SUITE("remap") {
+    // Minimal stand-in satisfying the implicit `remap_traits`-like interface:
+    // anything with a `.translate(entity_type)` member.
+    namespace {
+    constexpr auto identity_remap = +[](entt::entity e) { return e; };
+    } // namespace
 
-  // Minimal stand-in satisfying the implicit `remap_traits`-like interface:
-  // anything with a `.translate(entity_type)` member.
-  namespace {
-  constexpr auto identity_remap = +[](entt::entity e) { return e; };
-  } // namespace
+    TEST_CASE("remap with identity translation leaves all links unchanged") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto child = reg.create();
+        destroy_hierarchy::push_back(reg, parent, child);
 
-  TEST_CASE("remap with identity translation leaves all links unchanged") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto child = reg.create();
-    destroy_hierarchy::push_back(reg, parent, child);
+        destroy_hierarchy::remap(reg, child, identity_remap);
+        destroy_hierarchy::remap(reg, parent, identity_remap);
 
-    destroy_hierarchy::remap(reg, child, identity_remap);
-    destroy_hierarchy::remap(reg, parent, identity_remap);
+        CHECK(reg.get<destroy_hierarchy>(child).parent == parent);
+        CHECK(reg.get<destroy_hierarchy>(parent).first_child == child);
+    }
 
-    CHECK(reg.get<destroy_hierarchy>(child).parent == parent);
-    CHECK(reg.get<destroy_hierarchy>(parent).first_child == child);
-  }
+    TEST_CASE("remap translates all five hierarchy links through the provided "
+              "remap table") {
+        entt::registry reg;
+        auto parent = reg.create();
+        auto c1 = reg.create();
+        auto c2 = reg.create();
+        destroy_hierarchy::push_back(reg, parent, c1);
+        destroy_hierarchy::push_back(reg, parent, c2);
 
-  TEST_CASE("remap translates all five hierarchy links through the provided "
-            "remap table") {
-    entt::registry reg;
-    auto parent = reg.create();
-    auto c1 = reg.create();
-    auto c2 = reg.create();
-    destroy_hierarchy::push_back(reg, parent, c1);
-    destroy_hierarchy::push_back(reg, parent, c2);
+        // Simulate a prefab collapse: every source entity maps to a "new" entity.
+        auto newParent = reg.create();
+        auto newC1 = reg.create();
+        auto newC2 = reg.create();
 
-    // Simulate a prefab collapse: every source entity maps to a "new" entity.
-    auto newParent = reg.create();
-    auto newC1 = reg.create();
-    auto newC2 = reg.create();
+        auto remap =
+            entity_remap{}.map(parent, newParent).map(c1, newC1).map(c2, newC2);
 
-    auto remap =
-        entity_remap{}.map(parent, newParent).map(c1, newC1).map(c2, newC2);
+        destroy_hierarchy::remap(reg, parent, remap);
+        destroy_hierarchy::remap(reg, c1, remap);
+        destroy_hierarchy::remap(reg, c2, remap);
 
-    destroy_hierarchy::remap(reg, parent, remap);
-    destroy_hierarchy::remap(reg, c1, remap);
-    destroy_hierarchy::remap(reg, c2, remap);
+        auto &ph = reg.get<destroy_hierarchy>(parent);
+        CHECK(ph.first_child == newC1);
+        CHECK(ph.last_child == newC2);
 
-    auto &ph = reg.get<destroy_hierarchy>(parent);
-    CHECK(ph.first_child == newC1);
-    CHECK(ph.last_child == newC2);
+        auto &h1 = reg.get<destroy_hierarchy>(c1);
+        CHECK(h1.parent == newParent);
+        CHECK(h1.next_sibling == newC2);
 
-    auto &h1 = reg.get<destroy_hierarchy>(c1);
-    CHECK(h1.parent == newParent);
-    CHECK(h1.next_sibling == newC2);
+        auto &h2 = reg.get<destroy_hierarchy>(c2);
+        CHECK(h2.parent == newParent);
+        CHECK(h2.prev_sibling == newC1);
+    }
 
-    auto &h2 = reg.get<destroy_hierarchy>(c2);
-    CHECK(h2.parent == newParent);
-    CHECK(h2.prev_sibling == newC1);
-  }
+    TEST_CASE(
+        "remap on an entity without a hierarchy component is a safe no-op") {
+        entt::registry reg;
+        auto e = reg.create();
+        CHECK_NOTHROW(destroy_hierarchy::remap(reg, e, identity_remap));
+    }
 
-  TEST_CASE(
-      "remap on an entity without a hierarchy component is a safe no-op") {
-    entt::registry reg;
-    auto e = reg.create();
-    CHECK_NOTHROW(destroy_hierarchy::remap(reg, e, identity_remap));
-  }
+    TEST_CASE("remap correctly maps entt::null links to entt::null") {
+        entt::registry reg;
+        auto lonely = reg.create();
+        reg.emplace<destroy_hierarchy>(lonely); // all links default to entt::null
 
-  TEST_CASE("remap correctly maps entt::null links to entt::null") {
-    entt::registry reg;
-    auto lonely = reg.create();
-    reg.emplace<destroy_hierarchy>(lonely); // all links default to entt::null
+        entity_remap remap; // empty table -> translate(null) still returns null
+        destroy_hierarchy::remap(reg, lonely, remap);
 
-    entity_remap remap; // empty table -> translate(null) still returns null
-    destroy_hierarchy::remap(reg, lonely, remap);
-
-    auto &h = reg.get<destroy_hierarchy>(lonely);
-    CHECK(h.parent == entt::null);
-    CHECK(h.first_child == entt::null);
-    CHECK(h.last_child == entt::null);
-    CHECK(h.next_sibling == entt::null);
-    CHECK(h.prev_sibling == entt::null);
-  }
+        auto &h = reg.get<destroy_hierarchy>(lonely);
+        CHECK(h.parent == entt::null);
+        CHECK(h.first_child == entt::null);
+        CHECK(h.last_child == entt::null);
+        CHECK(h.next_sibling == entt::null);
+        CHECK(h.prev_sibling == entt::null);
+    }
 
 } // TEST_SUITE("remap")
 
@@ -1216,79 +1360,73 @@ TEST_SUITE("remap") {
 // ---------------------------------------------------------------------------
 
 TEST_SUITE("integration") {
+    TEST_CASE("building, reordering, and tearing down a multi-level tree behaves "
+              "consistently end to end") {
+        entt::registry reg;
 
-  TEST_CASE("building, reordering, and tearing down a multi-level tree behaves "
-            "consistently end to end") {
-    entt::registry reg;
+        auto root = reg.create();
+        auto a = reg.create();
+        auto b = reg.create();
+        auto c = reg.create();
 
-    auto root = reg.create();
-    auto a = reg.create();
-    auto b = reg.create();
-    auto c = reg.create();
+        destroy_hierarchy::push_back(reg, root, a);
+        destroy_hierarchy::push_back(reg, root, b);
+        destroy_hierarchy::push_front(reg, root, c); // c, a, b
 
-    destroy_hierarchy::push_back(reg, root, a);
-    destroy_hierarchy::push_back(reg, root, b);
-    destroy_hierarchy::push_front(reg, root, c); // c, a, b
+        CHECK(collect_children<destroy_hierarchy>(reg, root) == std::vector<entt::entity>{c, a, b});
 
-    CHECK(collect_children<destroy_hierarchy>(reg, root) ==
-          std::vector<entt::entity>{c, a, b});
+        auto a1 = reg.create();
+        auto a2 = reg.create();
+        destroy_hierarchy::push_back(reg, a, a1);
+        destroy_hierarchy::push_back(reg, a, a2);
 
-    auto a1 = reg.create();
-    auto a2 = reg.create();
-    destroy_hierarchy::push_back(reg, a, a1);
-    destroy_hierarchy::push_back(reg, a, a2);
+        // Move `b` before `c`, then verify total ordering.
+        destroy_hierarchy::insert_before(reg, c, b);
+        CHECK(collect_children<destroy_hierarchy>(reg, root) == std::vector<entt::entity>{b, c, a});
 
-    // Move `b` before `c`, then verify total ordering.
-    destroy_hierarchy::insert_before(reg, c, b);
-    CHECK(collect_children<destroy_hierarchy>(reg, root) ==
-          std::vector<entt::entity>{b, c, a});
+        // find_root / is_descendant sanity across the tree.
+        CHECK(destroy_hierarchy::find_root(reg, a1) == root);
+        CHECK(destroy_hierarchy::is_descendant(reg, a1, root));
+        CHECK(destroy_hierarchy::is_descendant(reg, a1, a));
+        CHECK_FALSE(destroy_hierarchy::is_descendant(reg, b, a));
 
-    // find_root / is_descendant sanity across the tree.
-    CHECK(destroy_hierarchy::find_root(reg, a1) == root);
-    CHECK(destroy_hierarchy::is_descendant(reg, a1, root));
-    CHECK(destroy_hierarchy::is_descendant(reg, a1, a));
-    CHECK_FALSE(destroy_hierarchy::is_descendant(reg, b, a));
+        // Detach `a` (with its subtree) and confirm root's bookkeeping updates,
+        // while `a`'s own subtree remains intact but disconnected.
+        destroy_hierarchy::detach(reg, a);
+        CHECK(collect_children<destroy_hierarchy>(reg, root) == std::vector<entt::entity>{b, c});
+        CHECK(reg.get<destroy_hierarchy>(root).child_count == 2);
+        CHECK(collect_children<destroy_hierarchy>(reg, a) == std::vector<entt::entity>{a1, a2});
 
-    // Detach `a` (with its subtree) and confirm root's bookkeeping updates,
-    // while `a`'s own subtree remains intact but disconnected.
-    destroy_hierarchy::detach(reg, a);
-    CHECK(collect_children<destroy_hierarchy>(reg, root) ==
-          std::vector<entt::entity>{b, c});
-    CHECK(reg.get<destroy_hierarchy>(root).child_count == 2);
-    CHECK(collect_children<destroy_hierarchy>(reg, a) ==
-          std::vector<entt::entity>{a1, a2});
+        // Destroying `root` should not affect the now-detached `a` subtree.
+        reg.destroy(root);
+        CHECK_FALSE(reg.valid(root));
+        CHECK_FALSE(reg.valid(b));
+        CHECK_FALSE(reg.valid(c));
+        CHECK(reg.valid(a));
+        CHECK(reg.valid(a1));
+        CHECK(reg.valid(a2));
 
-    // Destroying `root` should not affect the now-detached `a` subtree.
-    reg.destroy(root);
-    CHECK_FALSE(reg.valid(root));
-    CHECK_FALSE(reg.valid(b));
-    CHECK_FALSE(reg.valid(c));
-    CHECK(reg.valid(a));
-    CHECK(reg.valid(a1));
-    CHECK(reg.valid(a2));
+        // Now destroying `a` should take its subtree with it.
+        reg.destroy(a);
+        CHECK_FALSE(reg.valid(a));
+        CHECK_FALSE(reg.valid(a1));
+        CHECK_FALSE(reg.valid(a2));
+    }
 
-    // Now destroying `a` should take its subtree with it.
-    reg.destroy(a);
-    CHECK_FALSE(reg.valid(a));
-    CHECK_FALSE(reg.valid(a1));
-    CHECK_FALSE(reg.valid(a2));
-  }
+    TEST_CASE("default alias `enttx::hierarchy` behaves identically to a "
+              "manually instantiated destroy_children hierarchy") {
+        entt::registry reg;
+        reg.on_destroy<enttx::hierarchy>().connect<&enttx::hierarchy::on_destroy>();
 
-  TEST_CASE("default alias `enttx::hierarchy` behaves identically to a "
-            "manually instantiated destroy_children hierarchy") {
-    entt::registry reg;
-    reg.on_destroy<enttx::hierarchy>().connect<&enttx::hierarchy::on_destroy>();
+        auto parent = reg.create();
+        auto child = reg.create();
+        enttx::hierarchy::push_back(reg, parent, child);
 
-    auto parent = reg.create();
-    auto child = reg.create();
-    enttx::hierarchy::push_back(reg, parent, child);
+        CHECK(reg.get<enttx::hierarchy>(parent).child_count == 1);
+        CHECK(enttx::hierarchy::deletion_policy == hierarchy_deletion_policy::destroy_children);
 
-    CHECK(reg.get<enttx::hierarchy>(parent).child_count == 1);
-    CHECK(enttx::hierarchy::deletion_policy ==
-          hierarchy_deletion_policy::destroy_children);
-
-    reg.destroy(parent);
-    CHECK_FALSE(reg.valid(child));
-  }
+        reg.destroy(parent);
+        CHECK_FALSE(reg.valid(child));
+    }
 
 } // TEST_SUITE("integration")
